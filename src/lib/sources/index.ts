@@ -13,7 +13,7 @@ export const CATEGORIES = {
     label: "Movies & TV",
     search: searchTmdb,
     isConfigured: hasTmdbToken,
-    setupHint: "Add TMDB_READ_TOKEN to .env",
+    setupHint: "Add a free TMDB key (TMDB_READ_TOKEN) to config.env, see README.txt,",
   },
   anime: {
     label: "Anime",
@@ -25,7 +25,8 @@ export const CATEGORIES = {
     label: "Games",
     search: searchIgdb,
     isConfigured: hasIgdbCredentials,
-    setupHint: "Add TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET to .env (free at dev.twitch.tv)",
+    setupHint:
+      "Add free Twitch keys (TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET) to config.env, see README.txt,",
   },
 } satisfies Record<
   string,

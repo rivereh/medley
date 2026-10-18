@@ -27,7 +27,7 @@ Medley/
 1. Download the latest `Medley.zip` from the [Releases page](https://github.com/rivereh/medley/releases).
 2. Unzip it anywhere, e.g. your Documents folder or a USB drive.
 3. Double-click **`Medley.exe`**. A console window opens and Medley opens in your browser at <http://localhost:3000>.
-4. Close the console window to stop Medley and add your API key (see below)
+4. Close the console window to stop Medley and add your API keys (see below)
 
 ## Adding your API keys
 

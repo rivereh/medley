@@ -79,20 +79,8 @@ node(
 fs.rmSync(seaConfig);
 fs.rmSync(blob);
 
-fs.writeFileSync(
-  path.join(out, "README.txt"),
-  `Medley
-======
-
-Double-click Medley.exe to start. Your browser opens to http://localhost:3000.
-Close the Medley window to stop it.
-
-Everything stays in this folder:
-  data\\medley.db   your list (back this up!)
-  config.env       API keys, port and network settings (created on first run)
-
-To update Medley, replace Medley.exe and the app folder. Keep data and config.env.
-`,
-);
+// End-user instructions. Windows line endings so it reads well in any Notepad.
+const readme = fs.readFileSync(path.join(root, "launcher", "README.txt"), "utf8");
+fs.writeFileSync(path.join(out, "README.txt"), readme.replace(/\r?\n/g, "\r\n"));
 
 console.log(`\nDone: ${out}`);
