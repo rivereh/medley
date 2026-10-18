@@ -52,3 +52,5 @@ next-env.d.ts
 .claude/
 .windsurf/
 skills-lock.json
+# portable build (npm run package)
+/dist

@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Tracker",
+  title: "Medley",
   description: "Track movies, shows, anime and games",
 };
 
@@ -28,15 +28,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           loads; this ignores those attribute differences on <body> only. */}
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <header className="border-b border-white/10">
-          <nav className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-4">
-            <Link href="/" className="text-lg font-semibold">
-              Tracker
-            </Link>
-            <Link href="/search" className="text-sm text-muted hover:text-foreground">
-              Search
+          {/* items-baseline lines the bigger logo text up with the links' text */}
+          <nav className="mx-auto flex max-w-6xl items-baseline gap-6 px-4 py-4">
+            <Link href="/list" className="text-lg font-semibold">
+              Medley
             </Link>
             <Link href="/list" className="text-sm text-muted hover:text-foreground">
               My list
+            </Link>
+            <Link href="/search" className="text-sm text-muted hover:text-foreground">
+              Search
             </Link>
             <Link href="/settings" className="text-sm text-muted hover:text-foreground">
               Settings

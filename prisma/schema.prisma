@@ -42,7 +42,7 @@ model User {
   id          String      @id @default(cuid())
   username    String      @unique
   avatarUrl   String?
-  ratingScale RatingScale @default(TEN)
+  ratingScale RatingScale @default(FIVE_STARS)
   createdAt   DateTime    @default(now())
 
   entries   Entry[]

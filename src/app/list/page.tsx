@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { type CompletionNumber, EntryCard } from "@/components/entry-card";
 import { EpisodeCard } from "@/components/episode-card";
 import { InProgressCard } from "@/components/in-progress-card";
+import { ListSearch } from "@/components/list-search";
 import { UrlSelect } from "@/components/url-select";
 import type { Entry, EpisodeLog, Media } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
@@ -94,13 +95,17 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
   const episodesTab = params.status === EPISODES_TAB;
   const status = isStatus(params.status) ? params.status : null;
   const type = isType(params.type) ? params.type : null;
+  const query = typeof params.q === "string" ? params.q.trim() : "";
   const sort: SortKey =
     typeof params.sort === "string" && params.sort in SORTS
       ? (params.sort as SortKey)
       : DEFAULT_SORT;
 
   const user = await getCurrentUser();
-  const typeFilter = type ? { media: { type } } : {};
+  // Type filter and title search apply to every list, count and the In Progress row.
+  const titleFilter = query ? { title: { contains: query } } : {};
+  const mediaFilter =
+    type || query ? { media: { ...(type && { type }), ...titleFilter } } : {};
   const showsInProgress = !type || type === "ANIME" || type === "TV";
   // Unfinished shows/anime are tracked by the In Progress row and their
   // episode posts, so "All" only shows their post once they're completed.
@@ -116,29 +121,29 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
     episodesTab
       ? []
       : db.entry.findMany({
-          where: { userId: user.id, ...typeFilter, ...(status ? { status } : allFeedFilter) },
+          where: { userId: user.id, ...mediaFilter, ...(status ? { status } : allFeedFilter) },
           include: { media: true },
         }),
     // Episode posts show under "All" and "Episodes", not under a status tab.
     status
       ? []
       : db.episodeLog.findMany({
-          where: { userId: user.id, ...typeFilter },
+          where: { userId: user.id, ...mediaFilter },
           include: { media: true },
         }),
     db.entry.groupBy({
       by: ["status"],
-      where: { userId: user.id, ...typeFilter },
+      where: { userId: user.id, ...mediaFilter },
       _count: true,
     }),
-    db.episodeLog.count({ where: { userId: user.id, ...typeFilter } }),
-    db.entry.count({ where: { userId: user.id, ...typeFilter, ...allFeedFilter } }),
+    db.episodeLog.count({ where: { userId: user.id, ...mediaFilter } }),
+    db.entry.count({ where: { userId: user.id, ...mediaFilter, ...allFeedFilter } }),
     showsInProgress
       ? db.entry.findMany({
           where: {
             userId: user.id,
             status: "IN_PROGRESS",
-            media: { type: type ?? { in: ["ANIME", "TV"] } },
+            media: { type: type ?? { in: ["ANIME", "TV"] }, ...titleFilter },
           },
           include: { media: true },
           orderBy: { updatedAt: "desc" },
@@ -173,10 +178,11 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
   }
   for (const c of allCompleted) completionNumber.get(c.id)!.total = totals.get(c.mediaId)!;
 
-  // Status tabs keep the current type filter and sort.
+  // Status tabs keep the current search, type filter and sort.
   const statusHref = (s: string | null) => {
     const p = new URLSearchParams();
     if (s) p.set("status", s);
+    if (query) p.set("q", query);
     if (type) p.set("type", type);
     if (sort !== DEFAULT_SORT) p.set("sort", sort);
     return p.size ? `/list?${p}` : "/list";
@@ -199,7 +205,28 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
         </section>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* Toolbar: search with Type/Sort beside it, then the status tabs on their own row. */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <ListSearch />
+          <div className="flex shrink-0 flex-wrap items-center gap-4">
+            <UrlSelect
+              label="Type"
+              param="type"
+              value={type ?? "all"}
+              options={[
+                { value: "all", label: "All types" },
+                ...Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label })),
+              ]}
+            />
+            <UrlSelect
+              label="Sort"
+              param="sort"
+              value={sort}
+              options={Object.entries(SORTS).map(([value, s]) => ({ value, label: s.label }))}
+            />
+          </div>
+        </div>
         <nav className="flex flex-wrap gap-2 text-sm">
           <Tab
             href={statusHref(null)}
@@ -220,26 +247,11 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
             label={`Episodes (${episodeCount})`}
           />
         </nav>
-        <div className="flex flex-wrap gap-4">
-          <UrlSelect
-            label="Type"
-            param="type"
-            value={type ?? "all"}
-            options={[
-              { value: "all", label: "All types" },
-              ...Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label })),
-            ]}
-          />
-          <UrlSelect
-            label="Sort"
-            param="sort"
-            value={sort}
-            options={Object.entries(SORTS).map(([value, s]) => ({ value, label: s.label }))}
-          />
-        </div>
       </div>
 
-      {items.length === 0 ? (
+      {items.length === 0 && query ? (
+        <p className="text-muted">Nothing on your list matches “{query}”.</p>
+      ) : items.length === 0 ? (
         <p className="text-muted">
           Nothing here yet.{" "}
           <Link href="/search" className="text-accent underline">

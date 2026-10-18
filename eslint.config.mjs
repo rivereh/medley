@@ -12,7 +12,14 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Portable build output (npm run package).
+    "dist/**",
   ]),
+  {
+    // Node single executables only run CommonJS, so the launcher uses require().
+    files: ["launcher/**/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 ]);
 
 export default eslintConfig;

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { ResultCard } from "@/components/result-card";
 import { db } from "@/lib/db";
@@ -91,6 +92,9 @@ async function ResultsSection({
   query: string;
   limit?: number;
 }) {
+  // Search results are always per-request: never let Next prerender these
+  // API calls (it would cut them off when the prerender finishes).
+  await connection();
   const { search, isConfigured, setupHint } = CATEGORIES[category];
   if (!isConfigured()) return <p className="text-sm text-muted">{setupHint} to enable this.</p>;
 

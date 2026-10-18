@@ -5,12 +5,12 @@ import { updateRatingScale } from "@/app/actions";
 import { RatingDisplay, type RatingScale } from "./rating";
 
 const OPTIONS: { value: RatingScale; label: string; description: string }[] = [
-  { value: "TEN", label: "Out of 10", description: "Whole numbers from 1 to 10." },
   {
     value: "FIVE_STARS",
-    label: "5 stars",
+    label: "5 stars (default)",
     description: "Half stars allowed. Hover over the stars to pick a rating.",
   },
+  { value: "TEN", label: "Out of 10", description: "Whole numbers from 1 to 10." },
 ];
 
 export function RatingScaleSetting({ current }: { current: RatingScale }) {
