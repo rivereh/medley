@@ -1,4 +1,6 @@
-# Medley
+# Medley | All in One Media Tracker
+
+<img src="https://i.imgur.com/Eja82RH.png" width="700px" />
 
 An all-in-one tracker for **movies, TV shows, anime and games**, inspired by Letterboxd and AniList. It runs on your own computer, and your list stays in a single database file next to the app.
 
