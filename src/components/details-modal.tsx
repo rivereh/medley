@@ -17,10 +17,20 @@ function todayInput() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export function DetailsModal({ result, onClose }: { result: SearchResult; onClose: () => void }) {
+export function DetailsModal({
+  result,
+  backdropUrl,
+  onClose,
+}: {
+  result: SearchResult;
+  /** Banner already cached for this title (e.g. on a My list post), shown right away. */
+  backdropUrl?: string | null;
+  onClose: () => void;
+}) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState(false);
+  const [bannerLoaded, setBannerLoaded] = useState(false);
 
   useEffect(() => {
     dialogRef.current?.showModal();
@@ -38,7 +48,7 @@ export function DetailsModal({ result, onClose }: { result: SearchResult; onClos
 
   // Show what the search result already has while the full details load.
   const d = data?.details;
-  const backdrop = d?.backdropUrl;
+  const backdrop = backdropUrl ?? d?.backdropUrl;
 
   return (
     <dialog
@@ -51,7 +61,16 @@ export function DetailsModal({ result, onClose }: { result: SearchResult; onClos
       <div className="max-h-[calc(100vh-2rem)] overflow-y-auto">
         <div className="relative h-40 w-full bg-background sm:h-56">
           {backdrop && (
-            <Image src={backdrop} alt="" fill sizes="48rem" className="object-cover opacity-60" />
+            <Image
+              src={backdrop}
+              alt=""
+              fill
+              sizes="48rem"
+              loading="eager"
+              fetchPriority="high"
+              onLoad={() => setBannerLoaded(true)}
+              className={`object-cover transition-opacity duration-300 ${bannerLoaded ? "opacity-60" : "opacity-0"}`}
+            />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-surface to-transparent" />
           <button

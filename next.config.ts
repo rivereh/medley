@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
   },
   partialPrefetching: true,
   images: {
+    // Posters and banners never change at a given URL, so keep resized copies
+    // for a month instead of the default 4 hours.
+    minimumCacheTTL: 60 * 60 * 24 * 31,
     remotePatterns: [
       { protocol: "https", hostname: "image.tmdb.org" },
       { protocol: "https", hostname: "s4.anilist.co" },

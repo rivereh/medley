@@ -102,6 +102,7 @@ export function EpisodeCard({ log }: { log: EpisodeWithMedia }) {
             posterUrl: media.posterUrl,
             overview: media.overview,
           }}
+          backdropUrl={media.backdropUrl}
           onClose={() => setShowDetails(false)}
         />
       )}

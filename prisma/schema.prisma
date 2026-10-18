@@ -65,6 +65,14 @@ model Media {
   totalUnits Int? // episodes for shows/anime, null for movies/games
   updatedAt  DateTime    @updatedAt
 
+  // Full details for the details modal, cached so it opens instantly.
+  // Refreshed from the API when older than a week (see lib/sources/cache.ts).
+  backdropUrl      String?
+  genres           String? // JSON array of names
+  score            Int? // 0-100
+  facts            String? // JSON array of { label, value }
+  detailsFetchedAt DateTime?
+
   entries  Entry[]
   episodes EpisodeLog[]
 

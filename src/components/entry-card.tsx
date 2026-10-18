@@ -110,6 +110,7 @@ export function EntryCard({
             posterUrl: e.media.posterUrl,
             overview: e.media.overview,
           }}
+          backdropUrl={e.media.backdropUrl}
           onClose={() => setShowDetails(false)}
         />
       )}

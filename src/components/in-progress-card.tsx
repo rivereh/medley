@@ -96,6 +96,7 @@ export function InProgressCard({
             posterUrl: media.posterUrl,
             overview: media.overview,
           }}
+          backdropUrl={media.backdropUrl}
           onClose={() => setShowDetails(false)}
         />
       )}

@@ -5,7 +5,7 @@ import type { MediaSource, MediaType, RatingScale } from "@/generated/prisma/enu
 import { parseDay, today } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { isStatus, type Status } from "@/lib/labels";
-import { getDetails } from "@/lib/sources";
+import { getDetailsCached } from "@/lib/sources/cache";
 import { getEpisodeInfo } from "@/lib/sources/episodes";
 import { getCurrentUser } from "@/lib/user";
 
@@ -24,7 +24,7 @@ function revalidateAll() {
 /** Full details for the modal, plus a summary of the user's posts for this title. */
 export async function getMediaDetails(ref: MediaRef) {
   const [details, user] = await Promise.all([
-    getDetails(ref.source, ref.type, ref.externalId),
+    getDetailsCached(ref.source, ref.type, ref.externalId),
     getCurrentUser(),
   ]);
   const entries = await db.entry.findMany({
@@ -57,21 +57,11 @@ export async function addToList(
   },
 ) {
   const user = await getCurrentUser();
-  // Fetch metadata on the server rather than trusting what the client sends.
-  const d = await getDetails(ref.source, ref.type, ref.externalId);
-
-  const fields = {
-    type: d.type,
-    title: d.title,
-    posterUrl: d.posterUrl,
-    overview: d.overview,
-    year: d.year,
-    totalUnits: d.totalUnits,
-  };
-  const media = await db.media.upsert({
+  // Look up metadata on the server rather than trusting what the client sends.
+  // This also makes sure the title's Media row exists.
+  const d = await getDetailsCached(ref.source, ref.type, ref.externalId);
+  const media = await db.media.findUniqueOrThrow({
     where: { source_externalId: { source: d.source, externalId: d.externalId } },
-    update: fields,
-    create: { source: d.source, externalId: d.externalId, ...fields },
   });
 
   const status: Status = isStatus(ref.status) ? ref.status : "PLANNING";
