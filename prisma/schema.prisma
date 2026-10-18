@@ -1,0 +1,142 @@
+// Prisma schema for the media tracker.
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum MediaType {
+  MOVIE
+  TV
+  ANIME
+  GAME
+}
+
+enum MediaSource {
+  TMDB
+  ANILIST
+  IGDB
+}
+
+enum EntryStatus {
+  PLANNING
+  IN_PROGRESS // watching / playing
+  COMPLETED
+  PAUSED
+  DROPPED
+}
+
+// How ratings are shown and entered. Ratings are always stored as 1-10;
+// FIVE_STARS shows them as 0.5-5 stars (half stars), like Letterboxd.
+enum RatingScale {
+  TEN
+  FIVE_STARS
+}
+
+model User {
+  id          String      @id @default(cuid())
+  username    String      @unique
+  avatarUrl   String?
+  ratingScale RatingScale @default(TEN)
+  createdAt   DateTime    @default(now())
+
+  entries   Entry[]
+  episodes  EpisodeLog[]
+  activity  Activity[]
+  following Follow[]     @relation("follower")
+  followers Follow[]     @relation("following")
+}
+
+// Cached metadata for a title from an external API.
+model Media {
+  id         String      @id @default(cuid())
+  type       MediaType
+  source     MediaSource
+  externalId String
+  title      String
+  posterUrl  String?
+  year       Int?
+  overview   String?
+  totalUnits Int? // episodes for shows/anime, null for movies/games
+  updatedAt  DateTime    @updatedAt
+
+  entries  Entry[]
+  episodes EpisodeLog[]
+
+  @@unique([source, externalId])
+}
+
+// One post on a user's list. A title can have several (e.g. each rewatch
+// or replay is its own completed post).
+model Entry {
+  id              String      @id @default(cuid())
+  userId          String
+  mediaId         String
+  status          EntryStatus @default(PLANNING)
+  rating          Int? // 1-10
+  progress        Int         @default(0) // episodes watched, or hours played for games
+  allAchievements Boolean     @default(false) // games only: 100% achievements
+  notes           String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  media    Media        @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  activity Activity[]
+  episodes EpisodeLog[]
+
+  @@index([userId, mediaId])
+  @@index([userId, status])
+}
+
+// One watched episode, logged with the +1 button. Shows as its own post.
+model EpisodeLog {
+  id            String   @id @default(cuid())
+  userId        String
+  entryId       String
+  mediaId       String
+  episode       Int // overall episode number (matches Entry.progress)
+  season        Int? // TV only: season / episode within the season
+  seasonEpisode Int?
+  title         String? // episode name, when the source has one
+  watchedAt     DateTime @default(now()) // editable
+  createdAt     DateTime @default(now()) // when the post was added
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entry Entry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@index([userId, watchedAt])
+}
+
+// Feed of changes, used later for the friends activity feed.
+model Activity {
+  id        String   @id @default(cuid())
+  userId    String
+  entryId   String
+  action    String // e.g. "added", "status:COMPLETED", "rated"
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entry Entry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model Follow {
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+}
