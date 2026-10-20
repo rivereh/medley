@@ -1,16 +1,19 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useRef, useState, useTransition } from "react";
 import { logNextEpisode } from "@/app/actions";
 import type { Media } from "@/generated/prisma/client";
 import { DetailsModal } from "./details-modal";
 import { Poster } from "./poster";
 
-/** AniList-style "In Progress" tile: hover the poster and press + to log the next episode. */
+/**
+ * AniList-style "In Progress" tile: hover the poster and press + to log the
+ * next episode. Games have no episodes, so their tile just shows hours played.
+ */
 export function InProgressCard({
   entryId,
   media,
-  progress,
+  progress: savedProgress,
 }: {
   entryId: string;
   media: Media;
@@ -19,19 +22,33 @@ export function InProgressCard({
   const [pending, startTransition] = useTransition();
   const [showDetails, setShowDetails] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const total = media.totalUnits;
-  const done = total !== null && progress >= total;
+  // Bumped the moment + is pressed; the episode name follows once it's looked up.
+  const [progress, setProgress] = useOptimistic(savedProgress);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const isGame = media.type === "GAME";
+  const total = isGame ? null : media.totalUnits;
+  const done = isGame || (total !== null && progress >= total);
+
+  const showToast = (text: string) => {
+    setToast(text);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
+  };
 
   const logNext = () =>
     startTransition(async () => {
+      setProgress(progress + 1);
+      showToast(`Ep ${progress + 1}`);
       const res = await logNextEpisode(entryId);
-      if (!res) return;
-      setToast(
+      if (!res) {
+        setToast(null);
+        return;
+      }
+      showToast(
         res.finished
           ? "Finished! 🎉"
           : `Ep ${res.episode}${res.title ? ` · ${res.title}` : ""}`,
       );
-      setTimeout(() => setToast(null), 3000);
     });
 
   return (
@@ -56,7 +73,7 @@ export function InProgressCard({
         {/* Hover panel: always visible on touch screens, on hover with a mouse */}
         <div className="pointer-events-none absolute inset-x-0 bottom-1 flex items-center justify-between gap-1 bg-linear-to-t from-black/90 to-transparent px-1.5 pb-1 pt-6 opacity-100 transition [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">
           <span className="text-xs font-medium">
-            {progress}
+            {isGame ? (progress ? `${progress} hrs` : "Playing") : progress}
             {total ? ` / ${total}` : ""}
           </span>
           {!done && (
@@ -67,7 +84,7 @@ export function InProgressCard({
               aria-label={`Log episode ${progress + 1} of ${media.title}`}
               className="pointer-events-auto flex size-7 items-center justify-center rounded-full bg-accent text-lg font-bold leading-none text-black shadow transition hover:scale-110 disabled:opacity-60"
             >
-              {pending ? "…" : "+"}
+              +
             </button>
           )}
         </div>

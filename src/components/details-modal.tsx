@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { addToList, getMediaDetails } from "@/app/actions";
 import { STATUS_LABELS, TYPE_LABELS, type Status } from "@/lib/labels";
 import type { SearchResult } from "@/lib/sources/types";
+import { EpisodeList } from "./episode-list";
 import { Poster } from "./poster";
 
 type Loaded = Awaited<ReturnType<typeof getMediaDetails>>;
@@ -136,6 +137,12 @@ export function DetailsModal({
             )}
           </div>
         </div>
+
+        {(result.type === "ANIME" || result.type === "TV") && (
+          <div className="px-5 pb-6">
+            <EpisodeList result={result} />
+          </div>
+        )}
       </div>
     </dialog>
   );
@@ -144,7 +151,8 @@ export function DetailsModal({
 function AddSection({ result, data }: { result: SearchResult; data: Loaded | null }) {
   const pathname = usePathname();
   const isGame = result.type === "GAME";
-  const [status, setStatus] = useState<Status>("PLANNING");
+  // Null until picked: defaults depend on whether it's already on the list.
+  const [picked, setPicked] = useState<Status | null>(null);
   const [finishedAt, setFinishedAt] = useState(todayInput);
   const [allAchievements, setAllAchievements] = useState(false);
   // State after an add/log in this modal (the fetched data is a snapshot).
@@ -154,6 +162,13 @@ function AddSection({ result, data }: { result: SearchResult; data: Loaded | nul
   const [pending, startTransition] = useTransition();
 
   const tracked = local ?? data?.tracked ?? null;
+  // Picking the status an open post already has would change nothing.
+  const latestOpen =
+    tracked && ["PLANNING", "IN_PROGRESS", "PAUSED"].includes(tracked.latestStatus)
+      ? tracked.latestStatus
+      : null;
+  const statusOptions = Object.entries(STATUS_LABELS).filter(([key]) => key !== latestOpen);
+  const status: Status = picked ?? (tracked ? "COMPLETED" : "PLANNING");
 
   const submit = (s: Status) =>
     startTransition(async () => {
@@ -173,7 +188,8 @@ function AddSection({ result, data }: { result: SearchResult; data: Loaded | nul
           latestStatus: s,
           completions: (tracked?.completions ?? 0) + (completed ? 1 : 0),
         });
-        setJustLogged(completed);
+        setJustLogged(true);
+        setPicked(null);
       } catch {
         setFailed(true);
       }
@@ -203,6 +219,22 @@ function AddSection({ result, data }: { result: SearchResult; data: Loaded | nul
       )}
     </>
   );
+  const statusSelect = (
+    <label className="flex flex-col gap-1 text-xs text-muted">
+      Status
+      <select
+        value={status}
+        onChange={(e) => setPicked(e.target.value as Status)}
+        className="rounded bg-surface px-2 py-1.5 text-sm text-foreground"
+      >
+        {statusOptions.map(([key, label]) => (
+          <option key={key} value={key}>
+            {label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
   const error = failed && (
     <p className="w-full text-xs text-red-400">Something went wrong. Try again.</p>
   );
@@ -225,20 +257,23 @@ function AddSection({ result, data }: { result: SearchResult; data: Loaded | nul
           )}
         </div>
         <div className="flex flex-wrap items-end gap-3">
-          {completionFields}
+          {statusSelect}
+          {status === "COMPLETED" && completionFields}
           <button
             type="button"
-            onClick={() => submit("COMPLETED")}
+            onClick={() => submit(status)}
             disabled={pending}
             className="rounded bg-accent px-4 py-1.5 font-medium text-black disabled:opacity-60"
           >
             {pending
-              ? "Logging…"
-              : tracked.completions > 0
-                ? "Log another completion"
-                : "Mark completed"}
+              ? "Saving…"
+              : status !== "COMPLETED"
+                ? "Save"
+                : tracked.completions > 0
+                  ? "Log another completion"
+                  : "Mark completed"}
           </button>
-          {justLogged && <span className="pb-1.5 text-xs text-accent">Logged ✓</span>}
+          {justLogged && <span className="pb-1.5 text-xs text-accent">Saved ✓</span>}
           {error}
         </div>
       </div>
@@ -247,20 +282,7 @@ function AddSection({ result, data }: { result: SearchResult; data: Loaded | nul
 
   return (
     <div className="flex flex-wrap items-end gap-3 rounded bg-background p-3 text-sm">
-      <label className="flex flex-col gap-1 text-xs text-muted">
-        Status
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value as Status)}
-          className="rounded bg-surface px-2 py-1.5 text-sm text-foreground"
-        >
-          {Object.entries(STATUS_LABELS).map(([key, label]) => (
-            <option key={key} value={key}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </label>
+      {statusSelect}
       {status === "COMPLETED" && completionFields}
       <button
         type="button"

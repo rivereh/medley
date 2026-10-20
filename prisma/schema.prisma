@@ -73,8 +73,12 @@ model Media {
   facts            String? // JSON array of { label, value }
   detailsFetchedAt DateTime?
 
-  entries  Entry[]
-  episodes EpisodeLog[]
+  // When episodeList was last fetched (shows and anime only).
+  episodesFetchedAt DateTime?
+
+  entries     Entry[]
+  episodes    EpisodeLog[]
+  episodeList MediaEpisode[]
 
   @@unique([source, externalId])
 }
@@ -90,8 +94,12 @@ model Entry {
   progress        Int         @default(0) // episodes watched, or hours played for games
   allAchievements Boolean     @default(false) // games only: 100% achievements
   notes           String?
+  plannedAt       DateTime? // when it was added to planning; keeps the planning post after it moves on
   startedAt       DateTime?
   finishedAt      DateTime?
+  // Day the current status was set; dates planning / paused / dropped posts.
+  // Null on older entries, which fall back to createdAt.
+  statusAt        DateTime?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
@@ -122,6 +130,23 @@ model EpisodeLog {
   media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
 
   @@index([userId, watchedAt])
+}
+
+// Cached episode list for a show or anime, for the details modal and so the
+// +1 button can name episodes without calling an API. See lib/sources/episodes.ts.
+model MediaEpisode {
+  mediaId       String
+  number        Int // overall episode number (matches Entry.progress)
+  season        Int? // TV only: season / episode within the season
+  seasonEpisode Int?
+  title         String?
+  thumbnailUrl  String?
+  airDate       DateTime? // calendar day, UTC midnight
+  runtime       Int? // minutes
+
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([mediaId, number])
 }
 
 // Feed of changes, used later for the friends activity feed.

@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
-import { removeEntry, updateEntry } from "@/app/actions";
+import { removeEntry, removeExtraPost, updateEntry } from "@/app/actions";
 import type { Entry, Media } from "@/generated/prisma/client";
-import { formatDay, formatTimestamp, toDayInput } from "@/lib/dates";
+import { daysBetween, formatDay, formatDuration, formatTimestamp, postDate, toDayInput } from "@/lib/dates";
 import { STATUS_LABELS, TYPE_LABELS } from "@/lib/labels";
 import { DetailsModal } from "./details-modal";
 import { Poster } from "./poster";
@@ -15,22 +15,35 @@ type EntryWithMedia = Entry & { media: Media };
 /** Which completion of this title a completed post is, e.g. 2 of 3. */
 export type CompletionNumber = { n: number; total: number };
 
+/**
+ * One post on the list. With `post`, it's one of the entry's earlier steps
+ * kept as its own post: "planned" once it leaves planning, or "started" for a
+ * game once it's completed, paused or dropped. Editing one edits the entry.
+ */
 export function EntryCard({
   entry: e,
   completion,
   ratingScale,
+  post = "entry",
 }: {
   entry: EntryWithMedia;
   completion?: CompletionNumber;
   ratingScale: RatingScale;
+  post?: "entry" | "planned" | "started";
 }) {
   const [editing, setEditing] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [removing, startRemove] = useTransition();
   const isGame = e.media.type === "GAME";
-  const perfect = isGame && e.allAchievements;
+  const perfect = isGame && e.allAchievements && post === "entry";
 
   const remove = () => {
+    if (post !== "entry") {
+      const which = post === "planned" ? "planning" : "started";
+      if (!confirm(`Remove the ${which} post for "${e.media.title}"? Its other posts stay.`)) return;
+      startRemove(() => removeExtraPost(e.id, post));
+      return;
+    }
     if (!confirm(`Remove "${e.media.title}" from your list?`)) return;
     startRemove(() => removeEntry(e.id));
   };
@@ -64,8 +77,7 @@ export function EntryCard({
 
       <div className="flex min-h-30 min-w-0 flex-1 flex-col gap-2">
         <div className="pr-16">
-          <HeadlineDate entry={e} />
-          <h2 className="mt-0.5 text-lg font-semibold leading-tight">
+          <h2 className="text-lg font-semibold leading-tight">
             <button
               type="button"
               onClick={() => setShowDetails(true)}
@@ -84,7 +96,17 @@ export function EntryCard({
           <EditForm entry={e} ratingScale={ratingScale} onDone={() => setEditing(false)} />
         ) : (
           <>
-            <Summary entry={e} completion={completion} ratingScale={ratingScale} />
+            {post === "planned" ? (
+              <p className={`text-sm font-medium ${STATUS_LINE.PLANNING.className}`}>
+                {STATUS_LINE.PLANNING.text} {formatDay(e.plannedAt!)}
+              </p>
+            ) : post === "started" ? (
+              <p className={`text-sm font-medium ${STATUS_LINE.IN_PROGRESS.className}`}>
+                {STATUS_LINE.IN_PROGRESS.text} {formatDay(e.startedAt!)}
+              </p>
+            ) : (
+              <Summary entry={e} completion={completion} ratingScale={ratingScale} />
+            )}
             <div className="mt-auto flex items-center justify-end gap-3 pt-1 text-xs text-muted">
               <span suppressHydrationWarning>Added {formatTimestamp(e.createdAt)}</span>
               <button
@@ -118,16 +140,14 @@ export function EntryCard({
   );
 }
 
-/** Status line above the title, for anything not currently completed. */
-function HeadlineDate({ entry: e }: { entry: EntryWithMedia }) {
-  if (e.status === "COMPLETED") return null;
-  return (
-    <p className="text-sm font-medium text-muted">
-      {STATUS_LABELS[e.status]}
-      {e.startedAt && ` · Started ${formatDay(e.startedAt)}`}
-    </p>
-  );
-}
+/** What each status's post says before its date, e.g. "Dropped on Oct 20, 2026". */
+const STATUS_LINE = {
+  PLANNING: { text: "Planned on", className: "text-violet-300" },
+  IN_PROGRESS: { text: "Started on", className: "text-sky-400" },
+  COMPLETED: { text: "Completed on", className: "text-accent" },
+  PAUSED: { text: "Paused on", className: "text-amber-300" },
+  DROPPED: { text: "Dropped on", className: "text-red-400" },
+} as const;
 
 const chipClass = "rounded-full bg-background/60 px-2 py-0.5 text-foreground/80";
 
@@ -156,19 +176,23 @@ function Summary({
           <RatingDisplay value={e.rating} scale={ratingScale} />
         </p>
       )}
-      {e.finishedAt && (
-        <p className="font-medium text-accent">
-          Completed {formatDay(e.finishedAt)}
-          {completion && completion.total > 1 && (
-            <span
-              title={`Completion ${completion.n} of ${completion.total}`}
-              className="ml-2 rounded-full bg-accent/15 px-2 py-0.5 text-xs"
-            >
-              #{completion.n}
-            </span>
-          )}
-        </p>
-      )}
+      <p className={`font-medium ${STATUS_LINE[e.status].className}`}>
+        {STATUS_LINE[e.status].text} {formatDay(postDate(e))}
+        {e.status === "COMPLETED" && completion && completion.total > 1 && (
+          <span
+            title={`Completion ${completion.n} of ${completion.total}`}
+            className="ml-2 rounded-full bg-accent/15 px-2 py-0.5 text-xs"
+          >
+            #{completion.n}
+          </span>
+        )}
+        {/* Only games started from in progress have a start to measure from. */}
+        {e.status === "COMPLETED" && e.media.type === "GAME" && e.startedAt && e.finishedAt && (
+          <span className="ml-2 text-xs font-normal text-muted">
+            {formatDuration(daysBetween(e.startedAt, e.finishedAt))}
+          </span>
+        )}
+      </p>
       {(progress || perfect) && (
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           {progress && <span className={chipClass}>{progress}</span>}

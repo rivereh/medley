@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import type { MediaSource, MediaType, RatingScale } from "@/generated/prisma/enums";
-import { parseDay, today } from "@/lib/dates";
+import { parseDay, toDay, today } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { isStatus, type Status } from "@/lib/labels";
 import { getDetailsCached } from "@/lib/sources/cache";
-import { getEpisodeInfo } from "@/lib/sources/episodes";
+import { ensureEpisodeList, getEpisodeInfo, getEpisodeList } from "@/lib/sources/episodes";
 import { getCurrentUser } from "@/lib/user";
 
 type MediaRef = { source: MediaSource; type: MediaType; externalId: string };
@@ -14,6 +15,18 @@ type MediaRef = { source: MediaSource; type: MediaType; externalId: string };
 function str(form: FormData, key: string) {
   const v = form.get(key);
   return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+/**
+ * An entry's planning date after a status change. It's kept once set, so the
+ * planning post stays on the list after the title moves on.
+ */
+function plannedAtFor(
+  e: { status: Status; plannedAt: Date | null; statusAt: Date | null; createdAt: Date },
+  status: Status,
+) {
+  const since = e.plannedAt ?? (e.status === "PLANNING" ? (e.statusAt ?? toDay(e.createdAt)) : null);
+  return since ?? (status === "PLANNING" ? today() : null);
 }
 
 function revalidateAll() {
@@ -45,6 +58,30 @@ export async function getMediaDetails(ref: MediaRef) {
 }
 
 /**
+ * A show's episode list for the details modal, plus how far the user has got
+ * (the progress of their most recently updated post for it).
+ */
+export async function getMediaEpisodes(ref: MediaRef) {
+  if (ref.type !== "ANIME" && ref.type !== "TV") return null;
+  const [, user] = await Promise.all([
+    getDetailsCached(ref.source, ref.type, ref.externalId), // makes sure the Media row exists
+    getCurrentUser(),
+  ]);
+  const media = await db.media.findUniqueOrThrow({
+    where: { source_externalId: { source: ref.source, externalId: ref.externalId } },
+  });
+  const [episodes, latest] = await Promise.all([
+    getEpisodeList(media),
+    db.entry.findFirst({
+      where: { userId: user.id, mediaId: media.id },
+      orderBy: { updatedAt: "desc" },
+      select: { progress: true },
+    }),
+  ]);
+  return { episodes, progress: latest?.progress ?? 0 };
+}
+
+/**
  * Adds a post for a title. Logging a completion finishes the title's open
  * post (planning / in progress / paused) if there is one; otherwise it
  * creates a new post, so earlier completions stay as they were.
@@ -63,6 +100,10 @@ export async function addToList(
   const media = await db.media.findUniqueOrThrow({
     where: { source_externalId: { source: d.source, externalId: d.externalId } },
   });
+
+  // Save the show's episode list once the add has gone through, so +1 and the
+  // details modal don't wait on it later.
+  after(() => ensureEpisodeList(media).catch(() => {}));
 
   const status: Status = isStatus(ref.status) ? ref.status : "PLANNING";
   const completed = status === "COMPLETED";
@@ -88,6 +129,8 @@ export async function addToList(
         allAchievements,
         progress: completed && media.totalUnits ? media.totalUnits : open.progress,
         startedAt: open.startedAt ?? (status === "IN_PROGRESS" ? today() : null),
+        plannedAt: plannedAtFor(open, status),
+        statusAt: today(),
       },
     });
     await db.activity.create({
@@ -106,6 +149,8 @@ export async function addToList(
       // A start date is only implied when they're starting it now.
       startedAt: status === "IN_PROGRESS" ? today() : null,
       finishedAt,
+      plannedAt: status === "PLANNING" ? today() : null,
+      statusAt: today(),
       allAchievements,
     },
   });
@@ -149,6 +194,8 @@ export async function updateEntry(form: FormData) {
       progress,
       startedAt,
       finishedAt,
+      plannedAt: plannedAtFor(entry, status),
+      ...(status !== entry.status && { statusAt: today() }),
       allAchievements: entry.media.type === "GAME" && form.get("allAchievements") === "on",
     },
   });
@@ -165,6 +212,19 @@ export async function updateEntry(form: FormData) {
 export async function removeEntry(id: string) {
   const user = await getCurrentUser();
   await db.entry.deleteMany({ where: { id, userId: user.id } });
+  revalidateAll();
+}
+
+/**
+ * Removes an entry's separate planning or started post by clearing its date.
+ * The entry's own post stays.
+ */
+export async function removeExtraPost(id: string, kind: "planned" | "started") {
+  const user = await getCurrentUser();
+  await db.entry.updateMany({
+    where: { id, userId: user.id },
+    data: kind === "planned" ? { plannedAt: null } : { startedAt: null },
+  });
   revalidateAll();
 }
 
@@ -192,7 +252,7 @@ export async function logNextEpisode(entryId: string) {
   const total = entry.media.totalUnits;
   if (total && episode > total) return null;
 
-  const info = await getEpisodeInfo(entry.media.source, entry.media.externalId, episode);
+  const info = await getEpisodeInfo(entry.media, episode);
   const finished = total !== null && episode === total;
 
   await db.$transaction([

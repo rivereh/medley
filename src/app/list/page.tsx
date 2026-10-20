@@ -6,59 +6,116 @@ import { InProgressCard } from "@/components/in-progress-card";
 import { ListSearch } from "@/components/list-search";
 import { UrlSelect } from "@/components/url-select";
 import type { Entry, EpisodeLog, Media } from "@/generated/prisma/client";
+import { postDate } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { isStatus, isType, STATUS_LABELS, TYPE_LABELS } from "@/lib/labels";
 import { getCurrentUser } from "@/lib/user";
 
-// My list mixes two kinds of posts: entries (planning / completed / …) and
-// episode logs from the +1 button. They're merged and sorted together here.
+// My list mixes several kinds of posts: entries (planning / completed / …),
+// episode logs from the +1 button, and the earlier steps of an entry that has
+// moved on: its planning post, and for games its started post. They're
+// merged and sorted together here.
 type EntryItem = Entry & { media: Media };
 type EpisodeItem = EpisodeLog & { media: Media };
 type Item =
-  | { kind: "entry"; id: string; entry: EntryItem }
+  | { kind: "entry" | "planned" | "started"; id: string; entry: EntryItem }
   | { kind: "episode"; id: string; log: EpisodeItem };
 
 type SortValue = Date | number | string | null;
+type Pickers = {
+  entry: (e: EntryItem) => SortValue;
+  planned: (e: EntryItem) => SortValue;
+  started: (e: EntryItem) => SortValue;
+  episode: (l: EpisodeItem) => SortValue;
+};
 
-function pick(
-  i: Item,
-  entry: (e: EntryItem) => SortValue,
-  episode: (l: EpisodeItem) => SortValue,
-) {
-  return i.kind === "entry" ? entry(i.entry) : episode(i.log);
-}
+const pick = (i: Item, p: Pickers) => (i.kind === "episode" ? p.episode(i.log) : p[i.kind](i.entry));
+const none = () => null;
 
 const SORTS = {
   completed: {
-    label: "Completion date",
-    value: (i: Item) => pick(i, (e) => e.finishedAt, (l) => l.watchedAt),
+    label: "Date",
+    value: (i: Item) =>
+      pick(i, {
+        entry: postDate,
+        planned: (e) => e.plannedAt,
+        started: (e) => e.startedAt,
+        episode: (l) => l.watchedAt,
+      }),
   },
   added: {
     label: "Date added",
-    value: (i: Item) => pick(i, (e) => e.createdAt, (l) => l.createdAt),
+    value: (i: Item) =>
+      pick(i, {
+        entry: (e) => e.createdAt,
+        planned: (e) => e.createdAt,
+        started: (e) => e.createdAt,
+        episode: (l) => l.createdAt,
+      }),
   },
   updated: {
     label: "Recently updated",
-    value: (i: Item) => pick(i, (e) => e.updatedAt, (l) => l.watchedAt),
+    value: (i: Item) =>
+      pick(i, {
+        entry: (e) => e.updatedAt,
+        planned: (e) => e.plannedAt,
+        started: (e) => e.startedAt,
+        episode: (l) => l.watchedAt,
+      }),
   },
   started: {
     label: "Start date",
-    value: (i: Item) => pick(i, (e) => e.startedAt, () => null),
+    value: (i: Item) =>
+      pick(i, { entry: (e) => e.startedAt, planned: none, started: (e) => e.startedAt, episode: none }),
   },
   rating: {
     label: "Rating",
-    value: (i: Item) => pick(i, (e) => e.rating, () => null),
+    value: (i: Item) => pick(i, { entry: (e) => e.rating, planned: none, started: none, episode: none }),
   },
   title: {
     label: "Title (A–Z)",
-    value: (i: Item) => pick(i, (e) => e.media.title, (l) => l.media.title),
+    value: (i: Item) =>
+      pick(i, {
+        entry: (e) => e.media.title,
+        planned: (e) => e.media.title,
+        started: (e) => e.media.title,
+        episode: (l) => l.media.title,
+      }),
   },
 } satisfies Record<string, { label: string; value: (i: Item) => SortValue }>;
 
 type SortKey = keyof typeof SORTS;
 const DEFAULT_SORT: SortKey = "completed";
 
-const recency = (i: Item) => (i.kind === "entry" ? i.entry.updatedAt : i.log.watchedAt);
+// On ties, an entry's earlier steps sort below it: planned < started < the entry.
+function recency(i: Item) {
+  if (i.kind === "episode") return i.log.watchedAt.getTime();
+  if (i.kind === "entry") return i.entry.updatedAt.getTime();
+  return i.entry.createdAt.getTime() - (i.kind === "planned" ? 2 : 1);
+}
+
+/**
+ * The posts an entry contributes to "All". Unfinished shows/anime are tracked
+ * by the In Progress row and their episode posts, so their own post only shows
+ * once completed (their status tabs still list them for editing).
+ */
+function feedPosts(entry: EntryItem): Item[] {
+  const posts: Item[] = [];
+  const isShow = entry.media.type === "ANIME" || entry.media.type === "TV";
+  if (entry.status === "COMPLETED" || !isShow) posts.push({ kind: "entry", id: entry.id, entry });
+  if (entry.plannedAt && entry.status !== "PLANNING") {
+    posts.push({ kind: "planned", id: `${entry.id}:planned`, entry });
+  }
+  // Games keep a separate started post once they leave in progress.
+  if (
+    entry.media.type === "GAME" &&
+    entry.startedAt &&
+    (entry.status === "COMPLETED" || entry.status === "PAUSED" || entry.status === "DROPPED")
+  ) {
+    posts.push({ kind: "started", id: `${entry.id}:started`, entry });
+  }
+  return posts;
+}
 
 /** Titles ascend; everything else descends. Empty values go last; ties go to the most recent. */
 function compare(sort: SortKey, a: Item, b: Item) {
@@ -73,7 +130,7 @@ function compare(sort: SortKey, a: Item, b: Item) {
         : Number(vb) - Number(va);
     if (c) return c;
   }
-  return recency(b).getTime() - recency(a).getTime();
+  return recency(b) - recency(a);
 }
 
 // "Episodes" is an extra tab next to the statuses.
@@ -106,57 +163,40 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
   const titleFilter = query ? { title: { contains: query } } : {};
   const mediaFilter =
     type || query ? { media: { ...(type && { type }), ...titleFilter } } : {};
-  const showsInProgress = !type || type === "ANIME" || type === "TV";
-  // Unfinished shows/anime are tracked by the In Progress row and their
-  // episode posts, so "All" only shows their post once they're completed.
-  // Their status tabs still list them for editing.
-  const allFeedFilter = {
-    NOT: {
-      status: { not: "COMPLETED" as const },
-      media: { type: { in: ["ANIME" as const, "TV" as const] } },
-    },
-  };
+  const showsInProgress = type !== "MOVIE";
 
-  const [entries, episodes, counts, episodeCount, allFeedCount, inProgress] = await Promise.all([
-    episodesTab
-      ? []
-      : db.entry.findMany({
-          where: { userId: user.id, ...mediaFilter, ...(status ? { status } : allFeedFilter) },
-          include: { media: true },
-        }),
-    // Episode posts show under "All" and "Episodes", not under a status tab.
-    status
-      ? []
-      : db.episodeLog.findMany({
-          where: { userId: user.id, ...mediaFilter },
-          include: { media: true },
-        }),
-    db.entry.groupBy({
-      by: ["status"],
-      where: { userId: user.id, ...mediaFilter },
-      _count: true,
-    }),
-    db.episodeLog.count({ where: { userId: user.id, ...mediaFilter } }),
-    db.entry.count({ where: { userId: user.id, ...mediaFilter, ...allFeedFilter } }),
+  // Everything is loaded once; the tabs and counts are worked out from it.
+  const [entries, episodes, inProgress] = await Promise.all([
+    db.entry.findMany({ where: { userId: user.id, ...mediaFilter }, include: { media: true } }),
+    db.episodeLog.findMany({ where: { userId: user.id, ...mediaFilter }, include: { media: true } }),
     showsInProgress
       ? db.entry.findMany({
           where: {
             userId: user.id,
             status: "IN_PROGRESS",
-            media: { type: type ?? { in: ["ANIME", "TV"] }, ...titleFilter },
+            media: { type: type ?? { in: ["ANIME", "TV", "GAME"] }, ...titleFilter },
           },
           include: { media: true },
           orderBy: { updatedAt: "desc" },
         })
       : [],
   ]);
-  const countBy = Object.fromEntries(counts.map((c) => [c.status, c._count]));
-  const total = allFeedCount + episodeCount;
 
-  const items: Item[] = [
-    ...entries.map((entry) => ({ kind: "entry" as const, id: entry.id, entry })),
-    ...episodes.map((log) => ({ kind: "episode" as const, id: log.id, log })),
-  ].sort((a, b) => compare(sort, a, b));
+  const countBy: Record<string, number> = {};
+  for (const e of entries) countBy[e.status] = (countBy[e.status] ?? 0) + 1;
+  const feed = entries.flatMap(feedPosts);
+  const episodeItems = episodes.map((log) => ({ kind: "episode" as const, id: log.id, log }));
+  const total = feed.length + episodes.length;
+
+  const items: Item[] = (
+    episodesTab
+      ? episodeItems
+      : status
+        ? entries
+            .filter((e) => e.status === status)
+            .map((entry) => ({ kind: "entry" as const, id: entry.id, entry }))
+        : [...feed, ...episodeItems]
+  ).sort((a, b) => compare(sort, a, b));
 
   // Number each completed post among all completions of the same title
   // (oldest first), so rewatches/replays show as #2, #3…
@@ -244,7 +284,7 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
           <Tab
             href={statusHref(EPISODES_TAB)}
             active={episodesTab}
-            label={`Episodes (${episodeCount})`}
+            label={`Episodes (${episodes.length})`}
           />
         </nav>
       </div>
@@ -268,6 +308,8 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
                   completion={completionNumber.get(i.id)}
                   ratingScale={user.ratingScale}
                 />
+              ) : i.kind !== "episode" ? (
+                <EntryCard entry={i.entry} ratingScale={user.ratingScale} post={i.kind} />
               ) : (
                 <EpisodeCard log={i.log} />
               )}
