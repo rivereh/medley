@@ -4,8 +4,9 @@ import { useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { removeEntry, removeExtraPost, updateEntry } from "@/app/actions";
 import type { Entry, Media } from "@/generated/prisma/client";
-import { daysBetween, formatDay, formatDuration, formatTimestamp, postDate, toDayInput } from "@/lib/dates";
+import { daysBetween, formatDuration, postDate, toDayInput } from "@/lib/dates";
 import { STATUS_LABELS, TYPE_LABELS } from "@/lib/labels";
+import { DayText, TimestampText } from "./date-text";
 import { DetailsModal } from "./details-modal";
 import { Poster } from "./poster";
 import { RatingDisplay, RatingField, type RatingScale } from "./rating";
@@ -19,17 +20,20 @@ export type CompletionNumber = { n: number; total: number };
  * One post on the list. With `post`, it's one of the entry's earlier steps
  * kept as its own post: "planned" once it leaves planning, or "started" for a
  * game once it's completed, paused or dropped. Editing one edits the entry.
+ * `time` is when this post's status was logged, shown when hovering its date.
  */
 export function EntryCard({
   entry: e,
   completion,
   ratingScale,
   post = "entry",
+  time,
 }: {
   entry: EntryWithMedia;
   completion?: CompletionNumber;
   ratingScale: RatingScale;
   post?: "entry" | "planned" | "started";
+  time?: Date | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -98,17 +102,19 @@ export function EntryCard({
           <>
             {post === "planned" ? (
               <p className={`text-sm font-medium ${STATUS_LINE.PLANNING.className}`}>
-                {STATUS_LINE.PLANNING.text} {formatDay(e.plannedAt!)}
+                {STATUS_LINE.PLANNING.text} <DayText day={e.plannedAt!} time={time} />
               </p>
             ) : post === "started" ? (
               <p className={`text-sm font-medium ${STATUS_LINE.IN_PROGRESS.className}`}>
-                {STATUS_LINE.IN_PROGRESS.text} {formatDay(e.startedAt!)}
+                {STATUS_LINE.IN_PROGRESS.text} <DayText day={e.startedAt!} time={time} />
               </p>
             ) : (
-              <Summary entry={e} completion={completion} ratingScale={ratingScale} />
+              <Summary entry={e} completion={completion} ratingScale={ratingScale} time={time} />
             )}
             <div className="mt-auto flex items-center justify-end gap-3 pt-1 text-xs text-muted">
-              <span suppressHydrationWarning>Added {formatTimestamp(e.createdAt)}</span>
+              <span>
+                Added <TimestampText date={e.createdAt} />
+              </span>
               <button
                 type="button"
                 onClick={() => setEditing(true)}
@@ -155,10 +161,12 @@ function Summary({
   entry: e,
   completion,
   ratingScale,
+  time,
 }: {
   entry: EntryWithMedia;
   completion?: CompletionNumber;
   ratingScale: RatingScale;
+  time?: Date | null;
 }) {
   let progress: string | null = null;
   if (e.media.type === "GAME") {
@@ -177,7 +185,7 @@ function Summary({
         </p>
       )}
       <p className={`font-medium ${STATUS_LINE[e.status].className}`}>
-        {STATUS_LINE[e.status].text} {formatDay(postDate(e))}
+        {STATUS_LINE[e.status].text} <DayText day={postDate(e)} time={time} />
         {e.status === "COMPLETED" && completion && completion.total > 1 && (
           <span
             title={`Completion ${completion.n} of ${completion.total}`}

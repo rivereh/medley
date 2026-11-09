@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { removeEpisodeLog, updateEpisodeWatchedAt } from "@/app/actions";
 import type { EpisodeLog, Media } from "@/generated/prisma/client";
-import { formatTimestamp, toLocalDayInput } from "@/lib/dates";
+import { toLocalDayInput } from "@/lib/dates";
+import { TimestampText } from "./date-text";
 import { DetailsModal } from "./details-modal";
 import { Poster } from "./poster";
 
@@ -73,12 +74,14 @@ export function EpisodeCard({ log }: { log: EpisodeWithMedia }) {
                 {media.totalUnits && ` of ${media.totalUnits}`}
               </p>
               {log.title && <p className="font-medium leading-tight">“{log.title}”</p>}
-              <p className="font-medium text-accent" suppressHydrationWarning>
-                {formatTimestamp(log.watchedAt)}
+              <p className="font-medium text-accent">
+                <TimestampText date={log.watchedAt} />
               </p>
             </div>
             <div className="mt-auto flex items-center justify-end gap-3 pt-1 text-xs text-muted">
-              <span suppressHydrationWarning>Added {formatTimestamp(log.createdAt)}</span>
+              <span>
+                Added <TimestampText date={log.createdAt} />
+              </span>
               <button
                 type="button"
                 onClick={() => setEditing(true)}

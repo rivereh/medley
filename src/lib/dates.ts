@@ -71,3 +71,9 @@ export function postDate(e: {
   if (e.status === "PLANNING" && e.plannedAt) return e.plannedAt;
   return e.statusAt ?? toDay(e.createdAt);
 }
+
+/** For tooltips on real timestamps: "Nov 8, 2026 at 3:12 PM", in local time. */
+export function formatDateTime(d: Date) {
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${formatTimestamp(d)} at ${time}`;
+}

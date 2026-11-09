@@ -6,7 +6,7 @@ import { InProgressCard } from "@/components/in-progress-card";
 import { ListSearch } from "@/components/list-search";
 import { UrlSelect } from "@/components/url-select";
 import type { Entry, EpisodeLog, Media } from "@/generated/prisma/client";
-import { postDate } from "@/lib/dates";
+import { postDate, toDay } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { isStatus, isType, STATUS_LABELS, TYPE_LABELS } from "@/lib/labels";
 import { getCurrentUser } from "@/lib/user";
@@ -133,6 +133,46 @@ function compare(sort: SortKey, a: Item, b: Item) {
   return recency(b) - recency(a);
 }
 
+/**
+ * When each entry post's status was logged, from the activity log, so hovering
+ * its date can show the time. Dates are stored as calendar days, so a time is
+ * only shown when it was logged on that same day (a backdated completion has
+ * no known time). Entries created with a status log "added" instead.
+ */
+async function getPostTimes(items: Item[]) {
+  const posts = items.flatMap((i) => {
+    if (i.kind === "episode") return [];
+    const e = i.entry;
+    if (i.kind === "planned") return [{ id: i.id, entryId: e.id, status: "PLANNING", day: e.plannedAt }];
+    if (i.kind === "started") return [{ id: i.id, entryId: e.id, status: "IN_PROGRESS", day: e.startedAt }];
+    return [{ id: i.id, entryId: e.id, status: e.status, day: postDate(e) }];
+  });
+  const activity = await db.activity.findMany({
+    where: {
+      entryId: { in: [...new Set(posts.map((p) => p.entryId))] },
+      OR: [{ action: "added" }, { action: { startsWith: "status:" } }],
+    },
+    select: { entryId: true, action: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const times = new Map<string, Date>();
+  for (const p of posts) {
+    if (!p.day) continue;
+    const sameDay = activity.filter(
+      (a) => a.entryId === p.entryId && toDay(a.createdAt).getTime() === p.day!.getTime(),
+    );
+    // Latest matching status change; otherwise the entry's creation that day
+    // ("added" is only logged for entries created as planning or in progress).
+    const createdAs = p.status === "PLANNING" || p.status === "IN_PROGRESS";
+    const match =
+      sameDay.find((a) => a.action === `status:${p.status}`) ??
+      (createdAs ? sameDay.find((a) => a.action === "added") : undefined);
+    if (match) times.set(p.id, match.createdAt);
+  }
+  return times;
+}
+
 // "Episodes" is an extra tab next to the statuses.
 const EPISODES_TAB = "EPISODES";
 
@@ -209,6 +249,8 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
     select: { id: true, mediaId: true },
     orderBy: [{ finishedAt: "asc" }, { createdAt: "asc" }],
   });
+  const postTimes = await getPostTimes(items);
+
   const completionNumber = new Map<string, CompletionNumber>();
   const totals = new Map<string, number>();
   for (const c of allCompleted) {
@@ -307,9 +349,15 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
                   entry={i.entry}
                   completion={completionNumber.get(i.id)}
                   ratingScale={user.ratingScale}
+                  time={postTimes.get(i.id)}
                 />
               ) : i.kind !== "episode" ? (
-                <EntryCard entry={i.entry} ratingScale={user.ratingScale} post={i.kind} />
+                <EntryCard
+                  entry={i.entry}
+                  ratingScale={user.ratingScale}
+                  post={i.kind}
+                  time={postTimes.get(i.id)}
+                />
               ) : (
                 <EpisodeCard log={i.log} />
               )}
