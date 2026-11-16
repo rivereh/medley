@@ -1,0 +1,14 @@
+# Keep the build context small, and never send keys or databases to the image.
+node_modules
+.next
+dist
+src/generated
+.git
+.github
+.env*
+**/*.db
+**/*.db-journal
+*.tsbuildinfo
+.claude
+.agents
+.windsurf

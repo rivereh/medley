@@ -17,7 +17,6 @@ const fs = require("node:fs");
 const path = require("node:path");
 const net = require("node:net");
 const http = require("node:http");
-const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 const { createRequire } = require("node:module");
 
@@ -83,53 +82,13 @@ function loadConfig() {
   return config;
 }
 
-/**
- * Applies prisma/migrations (bundled as app/migrations) that the database
- * hasn't seen yet. Records them in Prisma's own _prisma_migrations table, so
- * the database stays compatible with `prisma migrate` during development.
- */
+/** Brings the database up to date (see migrate.cjs, shipped inside app/). */
 function migrate() {
-  const Database = appRequire("better-sqlite3");
-  const db = new Database(dbPath);
-  try {
-    db.exec(`CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
-      "id" TEXT PRIMARY KEY NOT NULL,
-      "checksum" TEXT NOT NULL,
-      "finished_at" DATETIME,
-      "migration_name" TEXT NOT NULL,
-      "logs" TEXT,
-      "rolled_back_at" DATETIME,
-      "started_at" DATETIME NOT NULL DEFAULT current_timestamp,
-      "applied_steps_count" INTEGER UNSIGNED NOT NULL DEFAULT 0
-    )`);
-    const applied = new Set(
-      db
-        .prepare(`SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL`)
-        .all()
-        .map((r) => r.migration_name),
-    );
-
-    const migrationsDir = path.join(appDir, "migrations");
-    const pending = fs
-      .readdirSync(migrationsDir, { withFileTypes: true })
-      .filter((d) => d.isDirectory() && !applied.has(d.name))
-      .map((d) => d.name)
-      .sort();
-
-    for (const name of pending) {
-      const sql = fs.readFileSync(path.join(migrationsDir, name, "migration.sql"), "utf8");
-      console.log(`Updating database: ${name}`);
-      // Not wrapped in a transaction: migrations toggle PRAGMA foreign_keys,
-      // which SQLite ignores inside one (Prisma runs them the same way).
-      db.exec(sql);
-      db.prepare(
-        `INSERT INTO _prisma_migrations (id, checksum, finished_at, migration_name, applied_steps_count)
-         VALUES (?, ?, current_timestamp, ?, 1)`,
-      ).run(crypto.randomUUID(), crypto.createHash("sha256").update(sql).digest("hex"), name);
-    }
-  } finally {
-    db.close();
-  }
+  appRequire(path.join(appDir, "migrate.cjs")).migrate({
+    dbPath,
+    migrationsDir: path.join(appDir, "migrations"),
+    Database: appRequire("better-sqlite3"),
+  });
 }
 
 function portInUse(port, host) {

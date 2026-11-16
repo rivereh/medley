@@ -1,0 +1,72 @@
+# Medley for CasaOS. In CasaOS: App Store → Custom Install → Import, then
+# paste this file (or upload it). Fill in the API keys under Environment
+# Variables; anime works without any.
+#
+# Also works as a plain Docker Compose file: docker compose -f casaos.yml up -d
+
+name: medley
+
+services:
+  medley:
+    image: ghcr.io/rivereh/medley:latest
+    container_name: medley
+    restart: unless-stopped
+    ports:
+      - target: 3000
+        published: "3000"
+        protocol: tcp
+    environment:
+      # Movies & TV: "API Read Access Token" from https://www.themoviedb.org/settings/api
+      TMDB_READ_TOKEN: ""
+      # Games: a free app from https://dev.twitch.tv/console/apps
+      TWITCH_CLIENT_ID: ""
+      TWITCH_CLIENT_SECRET: ""
+      # Set to false to stop checking GitHub for new releases.
+      MEDLEY_UPDATE_CHECK: "true"
+    volumes:
+      - type: bind
+        source: /DATA/AppData/medley/data
+        target: /data
+    x-casaos:
+      envs:
+        - container: TMDB_READ_TOKEN
+          description:
+            en_us: TMDB API Read Access Token (movies & TV search)
+        - container: TWITCH_CLIENT_ID
+          description:
+            en_us: Twitch Client ID (games search via IGDB)
+        - container: TWITCH_CLIENT_SECRET
+          description:
+            en_us: Twitch Client Secret (games search via IGDB)
+        - container: MEDLEY_UPDATE_CHECK
+          description:
+            en_us: Check GitHub for new Medley releases (true/false)
+      ports:
+        - container: "3000"
+          description:
+            en_us: Web interface
+      volumes:
+        - container: /data
+          description:
+            en_us: Your Medley database (medley.db)
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: medley
+  index: /
+  port_map: "3000"
+  category: Media
+  author: rivereh
+  developer: rivereh
+  icon: https://raw.githubusercontent.com/rivereh/medley/main/src/app/icon.svg
+  title:
+    en_us: Medley
+  tagline:
+    en_us: Track movies, TV, anime and games in one list
+  description:
+    en_us: >-
+      An all-in-one tracker for movies, TV shows, anime and games, inspired by
+      Letterboxd and AniList. Log completions and ratings, track shows episode
+      by episode, and keep everything in one database on your own server.

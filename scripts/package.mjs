@@ -44,6 +44,7 @@ copy(standalone, appOut);
 copy(path.join(root, ".next", "static"), path.join(appOut, ".next", "static"));
 if (fs.existsSync(path.join(root, "public"))) copy(path.join(root, "public"), path.join(appOut, "public"));
 copy(path.join(root, "prisma", "migrations"), path.join(appOut, "migrations"));
+fs.copyFileSync(path.join(root, "launcher", "migrate.cjs"), path.join(appOut, "migrate.cjs"));
 
 // Never ship your own keys or database: Next copies .env into the build.
 for (const name of fs.readdirSync(appOut)) {

@@ -64,9 +64,23 @@ Anime search works straight away. **Movies, TV and games need free API keys**, w
 
 No key needed.
 
+## Running on CasaOS (or any Docker host)
+
+Medley is published as a Docker image, `ghcr.io/rivereh/medley`, for Intel/AMD and ARM (Raspberry Pi, ZimaBoard).
+
+1. In CasaOS, open the **App Store**, click **Custom Install**, then **Import**.
+2. Paste in [`docker/casaos.yml`](docker/casaos.yml) and click **Submit**.
+3. Fill in your API keys under **Environment Variables** (see below), then **Install**.
+
+Medley opens on port 3000. Your data lives in `/DATA/AppData/medley/data` on the server. Without CasaOS, run `docker compose -f docker/casaos.yml up -d`.
+
 ## Updating
 
-Download the new release and replace **`Medley.exe`** and the **`app`** folder. Keep `data/` and `config.env`. Medley updates your database automatically the next time it starts.
+Medley checks GitHub for new releases and shows **Update available** at the top of the page when there is one. Settings → Updates shows your version and how to update. Set `MEDLEY_UPDATE_CHECK=false` to turn the check off.
+
+**Docker / CasaOS:** pull the new image and recreate the container (`docker compose pull && docker compose up -d`, or CasaOS's update option for the app). Your data stays in its volume.
+
+**Windows:** download the new release and replace **`Medley.exe`** and the **`app`** folder. Keep `data/` and `config.env`. Medley updates your database automatically the next time it starts.
 
 To be safe, back up first with **Settings → Your data → Download export**, or by copying `data/medley.db`.
 
@@ -93,6 +107,10 @@ Set up the database and start the dev server at <http://localhost:3000>:
 npx prisma migrate dev
 npm run dev
 ```
+
+### Publishing the Docker image
+
+Push a version tag (for example `git tag v0.2 && git push origin v0.2`). The **Docker image** workflow builds the image and publishes it as `ghcr.io/rivereh/medley:v0.2` and `:latest`. Also create a GitHub release for the tag; that's what the in-app update check looks for.
 
 ### Building the release
 

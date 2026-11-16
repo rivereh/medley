@@ -1,9 +1,15 @@
 import type { NextConfig } from "next";
+import pkg from "./package.json" with { type: "json" };
 
 const nextConfig: NextConfig = {
   // Bundles just the files the server needs into .next/standalone, which
   // `npm run package` turns into the portable Medley folder.
   output: "standalone",
+  env: {
+    // Shown in Settings and compared with GitHub's latest release. Release
+    // builds pass the tag (see .github/workflows/docker.yml).
+    MEDLEY_VERSION: process.env.MEDLEY_VERSION || pkg.version,
+  },
   cacheComponents: true,
   // There's no home page: My list is the start page.
   async redirects() {
