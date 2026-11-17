@@ -2,11 +2,12 @@
 
 <img src="https://i.imgur.com/Eja82RH.png" width="700px" />
 
-An all-in-one tracker for **movies, TV shows, anime and games**, inspired by Letterboxd and AniList. It runs on your own computer, and your list stays in a single database file next to the app.
+An all-in-one tracker for **movies, TV shows, anime, games and books**, inspired by Letterboxd and AniList. It runs on your own computer, and your list stays in a single database file next to the app.
 
-- **Search** movies and TV (TMDB), anime (AniList) and games (IGDB) from one search box, and click any result for details.
+- **Search** movies and TV (TMDB), anime (AniList), games (IGDB) and books (Open Library) from one search box, and click any result for details.
 - **Log completions** with a date and a rating, either out of 10 or as 5 stars with half stars. Rewatches and replays become their own posts, numbered #1, #2…
 - **Track shows and anime episode by episode.** In-progress shows sit at the top of your list: press **+** to log the next episode, saved with its episode name.
+- **Track books chapter by chapter.** Books in progress sit in the same row: press **+** to log the chapters you read (e.g. 11–14). Each day's reading becomes one post, like "Read chapters 1–10". Add a book's chapter count (Open Library doesn't have them) and reaching the last chapter completes it.
 - **Mark 100% achievements** on games to give their post a gold glow.
 - **Search, filter and sort** your list by status, type, completion date, rating and more.
 - **Export and import** your whole list as one file, from Settings.
@@ -61,6 +62,10 @@ Anime search works straight away. **Movies, TV and games need free API keys**, w
 5. Click **New Secret**, then copy it into `TWITCH_CLIENT_SECRET=`.
 
 ### Anime: AniList
+
+No key needed.
+
+### Books: Open Library
 
 No key needed.
 

@@ -8,6 +8,8 @@ type ImportResult = {
   entriesSkipped: number;
   episodesAdded: number;
   episodesSkipped: number;
+  chaptersAdded: number;
+  chaptersSkipped: number;
 };
 
 /** Export your list to a JSON file, or import one back. */
@@ -40,12 +42,13 @@ export function DataTransfer() {
         return;
       }
       const r = body as ImportResult;
-      const skipped = r.entriesSkipped + r.episodesSkipped;
+      const skipped = r.entriesSkipped + r.episodesSkipped + r.chaptersSkipped;
       setMessage({
         ok: true,
         text:
-          `Imported ${r.entriesAdded} post${r.entriesAdded === 1 ? "" : "s"} and ` +
-          `${r.episodesAdded} episode${r.episodesAdded === 1 ? "" : "s"}` +
+          `Imported ${r.entriesAdded} post${r.entriesAdded === 1 ? "" : "s"}, ` +
+          `${r.episodesAdded} episode${r.episodesAdded === 1 ? "" : "s"} and ` +
+          `${r.chaptersAdded} reading log${r.chaptersAdded === 1 ? "" : "s"}` +
           (skipped ? ` (skipped ${skipped} already on your list).` : "."),
       });
       setFile(null);

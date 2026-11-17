@@ -2,6 +2,7 @@ import "server-only";
 import type { MediaSource, MediaType } from "@/generated/prisma/enums";
 import { getAnilistDetails, searchAnilist } from "./anilist";
 import { getIgdbDetails, hasIgdbCredentials, searchIgdb } from "./igdb";
+import { getOpenLibraryDetails, searchOpenLibrary } from "./openlibrary";
 import { getTmdbDetails, hasTmdbToken, searchTmdb } from "./tmdb";
 import type { MediaDetails, SearchResult } from "./types";
 
@@ -28,6 +29,12 @@ export const CATEGORIES = {
     setupHint:
       "Add free Twitch keys (TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET) to config.env, see README.txt,",
   },
+  books: {
+    label: "Books",
+    search: searchOpenLibrary,
+    isConfigured: () => true,
+    setupHint: "",
+  },
 } satisfies Record<
   string,
   {
@@ -53,5 +60,7 @@ export function getDetails(
       return getAnilistDetails(externalId);
     case "IGDB":
       return getIgdbDetails(externalId);
+    case "OPENLIBRARY":
+      return getOpenLibraryDetails(externalId);
   }
 }

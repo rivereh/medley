@@ -10,9 +10,25 @@ export const STATUS_LABELS = {
 
 export type Status = keyof typeof STATUS_LABELS;
 
-export const TYPE_LABELS = { MOVIE: "Movie", TV: "TV", ANIME: "Anime", GAME: "Game" } as const;
+export const TYPE_LABELS = { MOVIE: "Movie", TV: "TV", ANIME: "Anime", GAME: "Game", BOOK: "Book" } as const;
 
 export type Type = keyof typeof TYPE_LABELS;
+
+/**
+ * Games and books have no episode posts, so starting one is its own post and
+ * completing it says how long it took.
+ */
+export function tracksStart(type: Type) {
+  return type === "GAME" || type === "BOOK";
+}
+
+/**
+ * How many units progress counts up to: episodes for shows, chapters for books
+ * (entered by the user; totalUnits is a book's page count). Null if unknown.
+ */
+export function progressTotal(m: { type: Type; totalUnits: number | null; chapters: number | null }) {
+  return m.type === "BOOK" ? m.chapters : m.totalUnits;
+}
 
 export function isStatus(v: unknown): v is Status {
   return typeof v === "string" && v in STATUS_LABELS;

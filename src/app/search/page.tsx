@@ -44,7 +44,7 @@ async function SearchBody({
         <input
           name="q"
           defaultValue={query}
-          placeholder="Search movies, shows, anime and games…"
+          placeholder="Search movies, shows, anime, games and books…"
           className="flex-1 rounded bg-surface px-3 py-2 outline-none focus:ring-2 focus:ring-accent"
           autoFocus
         />

@@ -5,10 +5,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { addToList, getMediaDetails } from "@/app/actions";
-import { STATUS_LABELS, TYPE_LABELS, type Status } from "@/lib/labels";
+import { daysBetween, formatDay, formatDuration } from "@/lib/dates";
+import { STATUS_LABELS, tracksStart, TYPE_LABELS, type Status } from "@/lib/labels";
 import type { SearchResult } from "@/lib/sources/types";
 import { EpisodeList } from "./episode-list";
 import { Poster } from "./poster";
+import { RatingDisplay } from "./rating";
 
 type Loaded = Awaited<ReturnType<typeof getMediaDetails>>;
 
@@ -32,6 +34,8 @@ export function DetailsModal({
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState(false);
   const [bannerLoaded, setBannerLoaded] = useState(false);
+  // Bumped after a save in the modal, to reload what's on the user's list.
+  const [reloads, setReloads] = useState(0);
 
   useEffect(() => {
     dialogRef.current?.showModal();
@@ -45,7 +49,7 @@ export function DetailsModal({
     return () => {
       cancelled = true;
     };
-  }, [result.source, result.type, result.externalId]);
+  }, [result.source, result.type, result.externalId, reloads]);
 
   // Show what the search result already has while the full details load.
   const d = data?.details;
@@ -114,7 +118,7 @@ export function DetailsModal({
               </ul>
             )}
 
-            <AddSection result={result} data={data} />
+            <AddSection result={result} data={data} onSaved={() => setReloads((n) => n + 1)} />
 
             {(d?.overview ?? result.overview) && (
               <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/90">
@@ -148,32 +152,37 @@ export function DetailsModal({
   );
 }
 
-function AddSection({ result, data }: { result: SearchResult; data: Loaded | null }) {
+function AddSection({
+  result,
+  data,
+  onSaved,
+}: {
+  result: SearchResult;
+  data: Loaded | null;
+  onSaved: () => void;
+}) {
   const pathname = usePathname();
   const isGame = result.type === "GAME";
+  const tracked = data?.tracked ?? null;
+  // Already-tracked titles show their history; the form opens on request.
+  const [formOpen, setFormOpen] = useState(false);
   // Null until picked: defaults depend on whether it's already on the list.
   const [picked, setPicked] = useState<Status | null>(null);
   const [finishedAt, setFinishedAt] = useState(todayInput);
   const [allAchievements, setAllAchievements] = useState(false);
-  // State after an add/log in this modal (the fetched data is a snapshot).
-  const [local, setLocal] = useState<{ latestStatus: Status; completions: number } | null>(null);
-  const [justLogged, setJustLogged] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [failed, setFailed] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  const tracked = local ?? data?.tracked ?? null;
   // Picking the status an open post already has would change nothing.
-  const latestOpen =
-    tracked && ["PLANNING", "IN_PROGRESS", "PAUSED"].includes(tracked.latestStatus)
-      ? tracked.latestStatus
-      : null;
+  const latestOpen = tracked?.current?.status ?? null;
   const statusOptions = Object.entries(STATUS_LABELS).filter(([key]) => key !== latestOpen);
   const status: Status = picked ?? (tracked ? "COMPLETED" : "PLANNING");
 
   const submit = (s: Status) =>
     startTransition(async () => {
       setFailed(false);
-      setJustLogged(false);
+      setJustSaved(false);
       const completed = s === "COMPLETED";
       try {
         await addToList({
@@ -184,12 +193,10 @@ function AddSection({ result, data }: { result: SearchResult; data: Loaded | nul
           finishedAt: completed ? finishedAt : null,
           allAchievements: completed && allAchievements,
         });
-        setLocal({
-          latestStatus: s,
-          completions: (tracked?.completions ?? 0) + (completed ? 1 : 0),
-        });
-        setJustLogged(true);
+        setJustSaved(true);
+        setFormOpen(false);
         setPicked(null);
+        onSaved();
       } catch {
         setFailed(true);
       }
@@ -240,42 +247,93 @@ function AddSection({ result, data }: { result: SearchResult; data: Loaded | nul
   );
 
   if (tracked) {
+    const { current, completions, ratingScale } = tracked;
     return (
       <div className="flex flex-col gap-3 rounded bg-background p-3 text-sm">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="text-accent">✓ On your list</span>
-          <span className="text-muted">{STATUS_LABELS[tracked.latestStatus]}</span>
-          {tracked.completions > 0 && (
-            <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent">
-              Completed ×{tracked.completions}
+          {current && (
+            <span className="text-muted">
+              {STATUS_LABELS[current.status]} · {STATUS_DATE_TEXT[current.status]}{" "}
+              {formatDay(current.date)}
             </span>
           )}
-          {pathname !== "/list" && (
-            <Link href="/list" className="ml-auto text-muted underline hover:text-foreground">
-              Edit in My list
-            </Link>
-          )}
+          {justSaved && <span className="text-xs text-accent">Saved ✓</span>}
+          <div className="ml-auto flex items-center gap-3">
+            {pathname !== "/list" && (
+              <Link href="/list" className="text-muted underline hover:text-foreground">
+                Edit in My list
+              </Link>
+            )}
+            {!formOpen && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFormOpen(true);
+                  setJustSaved(false);
+                }}
+                className="rounded bg-accent px-3 py-1 font-medium text-black"
+              >
+                {completions.length > 0 ? "+ Log again" : "Update status"}
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          {statusSelect}
-          {status === "COMPLETED" && completionFields}
-          <button
-            type="button"
-            onClick={() => submit(status)}
-            disabled={pending}
-            className="rounded bg-accent px-4 py-1.5 font-medium text-black disabled:opacity-60"
-          >
-            {pending
-              ? "Saving…"
-              : status !== "COMPLETED"
-                ? "Save"
-                : tracked.completions > 0
-                  ? "Log another completion"
-                  : "Mark completed"}
-          </button>
-          {justLogged && <span className="pb-1.5 text-xs text-accent">Saved ✓</span>}
-          {error}
-        </div>
+
+        {formOpen && (
+          <div className="flex flex-wrap items-end gap-3 rounded bg-surface/60 p-3">
+            {statusSelect}
+            {status === "COMPLETED" && completionFields}
+            <button
+              type="button"
+              onClick={() => submit(status)}
+              disabled={pending}
+              className="rounded bg-accent px-4 py-1.5 font-medium text-black disabled:opacity-60"
+            >
+              {pending ? "Saving…" : status === "COMPLETED" ? "Log completion" : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormOpen(false)}
+              className="px-2 py-1.5 text-muted hover:text-foreground"
+            >
+              Cancel
+            </button>
+            {error}
+          </div>
+        )}
+
+        {completions.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+              {completions.length === 1 ? "Completed" : `Completed ${completions.length} times`}
+            </h3>
+            {/* Newest first */}
+            <ul className="flex flex-col gap-1">
+              {[...completions].reverse().map((c) => (
+                <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {completions.length > 1 && (
+                    <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent">
+                      #{c.n}
+                    </span>
+                  )}
+                  <span className="font-medium">{formatDay(c.finishedAt)}</span>
+                  {c.rating && <RatingDisplay value={c.rating} scale={ratingScale} />}
+                  {tracksStart(result.type) && c.startedAt && (
+                    <span className="text-xs text-muted">
+                      {formatDuration(daysBetween(c.startedAt, c.finishedAt))}
+                    </span>
+                  )}
+                  {isGame && c.allAchievements && (
+                    <span className="rounded-full bg-amber-300/90 px-2 py-0.5 text-xs font-semibold text-black">
+                      🏆 100%
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     );
   }
@@ -296,3 +354,12 @@ function AddSection({ result, data }: { result: SearchResult; data: Loaded | nul
     </div>
   );
 }
+
+/** How the current status reads before its date, e.g. "started on". */
+const STATUS_DATE_TEXT = {
+  PLANNING: "planned on",
+  IN_PROGRESS: "started on",
+  COMPLETED: "completed on",
+  PAUSED: "paused on",
+  DROPPED: "dropped on",
+} as const;

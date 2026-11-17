@@ -15,12 +15,14 @@ enum MediaType {
   TV
   ANIME
   GAME
+  BOOK
 }
 
 enum MediaSource {
   TMDB
   ANILIST
   IGDB
+  OPENLIBRARY
 }
 
 enum EntryStatus {
@@ -47,6 +49,7 @@ model User {
 
   entries   Entry[]
   episodes  EpisodeLog[]
+  chapters  ChapterLog[]
   activity  Activity[]
   following Follow[]     @relation("follower")
   followers Follow[]     @relation("following")
@@ -62,7 +65,7 @@ model Media {
   posterUrl  String?
   year       Int?
   overview   String?
-  totalUnits Int? // episodes for shows/anime, null for movies/games
+  totalUnits Int? // episodes for shows/anime, pages for books (see chapters), null for movies/games
   updatedAt  DateTime    @updatedAt
 
   // Full details for the details modal, cached so it opens instantly.
@@ -76,9 +79,14 @@ model Media {
   // When episodeList was last fetched (shows and anime only).
   episodesFetchedAt DateTime?
 
+  // Books: how many chapters, entered by the user (no free API has chapter
+  // counts). totalUnits holds the page count from Open Library.
+  chapters Int?
+
   entries     Entry[]
   episodes    EpisodeLog[]
   episodeList MediaEpisode[]
+  chapterLogs ChapterLog[]
 
   @@unique([source, externalId])
 }
@@ -91,7 +99,7 @@ model Entry {
   mediaId         String
   status          EntryStatus @default(PLANNING)
   rating          Int? // 1-10
-  progress        Int         @default(0) // episodes watched, or hours played for games
+  progress        Int         @default(0) // episodes watched, chapters read, or hours played for games
   allAchievements Boolean     @default(false) // games only: 100% achievements
   notes           String?
   plannedAt       DateTime? // when it was added to planning; keeps the planning post after it moves on
@@ -107,6 +115,7 @@ model Entry {
   media    Media        @relation(fields: [mediaId], references: [id], onDelete: Cascade)
   activity Activity[]
   episodes EpisodeLog[]
+  chapters ChapterLog[]
 
   @@index([userId, mediaId])
   @@index([userId, status])
@@ -130,6 +139,26 @@ model EpisodeLog {
   media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
 
   @@index([userId, watchedAt])
+}
+
+// Chapters of a book read in one go, logged with the + button. The list
+// combines a book's logs from the same day into one post ("Read chapters 1-10").
+// fromChapter is set by the user, so starting mid-book doesn't count as 1-N.
+model ChapterLog {
+  id          String   @id @default(cuid())
+  userId      String
+  entryId     String
+  mediaId     String
+  fromChapter Int
+  toChapter   Int // matches Entry.progress after this log
+  readAt      DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entry Entry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
 }
 
 // Cached episode list for a show or anime, for the details modal and so the

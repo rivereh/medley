@@ -12,7 +12,7 @@ import { isStatus, isType } from "./labels";
 export const BACKUP_FORMAT = "medley-export";
 export const BACKUP_VERSION = 1;
 
-const SOURCES = ["TMDB", "ANILIST", "IGDB"] as const;
+const SOURCES = ["TMDB", "ANILIST", "IGDB", "OPENLIBRARY"] as const;
 const SCALES = ["TEN", "FIVE_STARS"] as const;
 
 type Source = (typeof SOURCES)[number];
@@ -20,7 +20,7 @@ type Source = (typeof SOURCES)[number];
 const mediaKey = (m: { source: string; externalId: string }) => `${m.source}:${m.externalId}`;
 
 export async function buildBackup(userId: string) {
-  const [user, entries, episodes] = await Promise.all([
+  const [user, entries, episodes, chapterLogs] = await Promise.all([
     db.user.findUniqueOrThrow({ where: { id: userId } }),
     db.entry.findMany({ where: { userId }, include: { media: true }, orderBy: { createdAt: "asc" } }),
     db.episodeLog.findMany({
@@ -28,10 +28,11 @@ export async function buildBackup(userId: string) {
       include: { media: true },
       orderBy: { watchedAt: "asc" },
     }),
+    db.chapterLog.findMany({ where: { userId }, include: { media: true }, orderBy: { readAt: "asc" } }),
   ]);
 
   const media = new Map<string, (typeof entries)[number]["media"]>();
-  for (const { media: m } of [...entries, ...episodes]) media.set(mediaKey(m), m);
+  for (const { media: m } of [...entries, ...episodes, ...chapterLogs]) media.set(mediaKey(m), m);
 
   return {
     format: BACKUP_FORMAT,
@@ -48,6 +49,7 @@ export async function buildBackup(userId: string) {
       year: m.year,
       overview: m.overview,
       totalUnits: m.totalUnits,
+      chapters: m.chapters,
     })),
     entries: entries.map((e) => ({
       id: e.id,
@@ -72,6 +74,14 @@ export async function buildBackup(userId: string) {
       seasonEpisode: l.seasonEpisode,
       title: l.title,
       watchedAt: l.watchedAt,
+      createdAt: l.createdAt,
+    })),
+    chapters: chapterLogs.map((l) => ({
+      entry: l.entryId,
+      media: mediaKey(l.media),
+      fromChapter: l.fromChapter,
+      toChapter: l.toChapter,
+      readAt: l.readAt,
       createdAt: l.createdAt,
     })),
   };
@@ -104,6 +114,8 @@ export type ImportResult = {
   entriesSkipped: number;
   episodesAdded: number;
   episodesSkipped: number;
+  chaptersAdded: number;
+  chaptersSkipped: number;
 };
 
 /**
@@ -125,6 +137,8 @@ export async function importBackup(
   const media = list(data, "media");
   const entries = list(data, "entries");
   const episodes = list(data, "episodes");
+  // Added later than the rest; older exports don't have it.
+  const chapterLogs = data.chapters === undefined ? [] : list(data, "chapters");
 
   const result: ImportResult = {
     titles: 0,
@@ -132,11 +146,14 @@ export async function importBackup(
     entriesSkipped: 0,
     episodesAdded: 0,
     episodesSkipped: 0,
+    chaptersAdded: 0,
+    chaptersSkipped: 0,
   };
 
   await db.$transaction(async (tx) => {
     if (replace) {
       await tx.episodeLog.deleteMany({ where: { userId } });
+      await tx.chapterLog.deleteMany({ where: { userId } });
       await tx.entry.deleteMany({ where: { userId } });
     }
 
@@ -162,6 +179,8 @@ export async function importBackup(
         year: int(m.year),
         overview: str(m.overview),
         totalUnits: int(m.totalUnits),
+        // Only when the file has it, so older exports don't clear a count.
+        ...(int(m.chapters) !== null && { chapters: int(m.chapters) }),
       };
       const row = await tx.media.upsert({
         where: { source_externalId: { source, externalId } },
@@ -242,6 +261,35 @@ export async function importBackup(
         },
       });
       result.episodesAdded++;
+    }
+
+    for (const l of chapterLogs) {
+      const entryId = entryIds.get(str(l.entry) ?? "");
+      const mediaId = mediaIds.get(str(l.media) ?? "");
+      const fromChapter = int(l.fromChapter);
+      const toChapter = int(l.toChapter);
+      const readAt = date(l.readAt);
+      if (!entryId || !mediaId || fromChapter === null || toChapter === null || !readAt) continue;
+
+      const existing = replace
+        ? null
+        : await tx.chapterLog.findFirst({ where: { userId, entryId, fromChapter, toChapter, readAt } });
+      if (existing) {
+        result.chaptersSkipped++;
+        continue;
+      }
+      await tx.chapterLog.create({
+        data: {
+          userId,
+          entryId,
+          mediaId,
+          fromChapter,
+          toChapter,
+          readAt,
+          createdAt: date(l.createdAt) ?? readAt,
+        },
+      });
+      result.chaptersAdded++;
     }
   });
 

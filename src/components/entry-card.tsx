@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 import { removeEntry, removeExtraPost, updateEntry } from "@/app/actions";
 import type { Entry, Media } from "@/generated/prisma/client";
 import { daysBetween, formatDuration, postDate, toDayInput } from "@/lib/dates";
-import { STATUS_LABELS, TYPE_LABELS } from "@/lib/labels";
+import { STATUS_LABELS, tracksStart, TYPE_LABELS } from "@/lib/labels";
 import { DayText, TimestampText } from "./date-text";
 import { DetailsModal } from "./details-modal";
 import { Poster } from "./poster";
@@ -171,6 +171,11 @@ function Summary({
   let progress: string | null = null;
   if (e.media.type === "GAME") {
     if (e.progress) progress = `${e.progress} hrs`;
+  } else if (e.media.type === "BOOK") {
+    // Progress is chapters; totalUnits is the page count, shown as its own chip.
+    if (e.progress || e.media.chapters) {
+      progress = `ch. ${e.progress}${e.media.chapters ? ` / ${e.media.chapters}` : ""}`;
+    }
   } else if (e.media.type !== "MOVIE" && (e.progress || e.media.totalUnits)) {
     progress = `${e.progress}${e.media.totalUnits ? ` / ${e.media.totalUnits}` : ""} eps`;
   }
@@ -194,16 +199,19 @@ function Summary({
             #{completion.n}
           </span>
         )}
-        {/* Only games started from in progress have a start to measure from. */}
-        {e.status === "COMPLETED" && e.media.type === "GAME" && e.startedAt && e.finishedAt && (
+        {/* Only games/books started from in progress have a start to measure from. */}
+        {e.status === "COMPLETED" && tracksStart(e.media.type) && e.startedAt && e.finishedAt && (
           <span className="ml-2 text-xs font-normal text-muted">
             {formatDuration(daysBetween(e.startedAt, e.finishedAt))}
           </span>
         )}
       </p>
-      {(progress || perfect) && (
+      {(progress || perfect || (e.media.type === "BOOK" && e.media.totalUnits)) && (
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           {progress && <span className={chipClass}>{progress}</span>}
+          {e.media.type === "BOOK" && e.media.totalUnits && (
+            <span className={chipClass}>{e.media.totalUnits} pages</span>
+          )}
           {perfect && (
             <span className="rounded-full bg-amber-300/90 px-2 py-0.5 font-semibold text-black">
               🏆 100% achievements
@@ -251,15 +259,30 @@ function EditForm({
             label={
               e.media.type === "GAME"
                 ? "Hours"
-                : `Episodes${e.media.totalUnits ? ` / ${e.media.totalUnits}` : ""}`
+                : e.media.type === "BOOK"
+                  ? "Chapter"
+                  : `Episodes${e.media.totalUnits ? ` / ${e.media.totalUnits}` : ""}`
             }
           >
             <input
               name="progress"
               type="number"
               min={0}
-              max={e.media.totalUnits ?? undefined}
+              max={(e.media.type === "BOOK" ? e.media.chapters : e.media.totalUnits) ?? undefined}
               defaultValue={e.progress}
+              className={`${inputClass} w-20`}
+            />
+          </Field>
+        )}
+        {e.media.type === "BOOK" && (
+          // Not available from Open Library, so the user enters it.
+          <Field label="Total chapters">
+            <input
+              name="chapters"
+              type="number"
+              min={1}
+              placeholder="?"
+              defaultValue={e.media.chapters ?? ""}
               className={`${inputClass} w-20`}
             />
           </Field>

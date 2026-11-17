@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import type { MediaSource, MediaType, RatingScale } from "@/generated/prisma/enums";
-import { parseDay, toDay, today } from "@/lib/dates";
+import { parseDay, postDate, toDay, today } from "@/lib/dates";
 import { db } from "@/lib/db";
-import { isStatus, type Status } from "@/lib/labels";
+import { isStatus, progressTotal, type Status } from "@/lib/labels";
 import { getDetailsCached } from "@/lib/sources/cache";
 import { ensureEpisodeList, getEpisodeInfo, getEpisodeList } from "@/lib/sources/episodes";
 import { getCurrentUser } from "@/lib/user";
@@ -45,13 +45,32 @@ export async function getMediaDetails(ref: MediaRef) {
       userId: user.id,
       media: { source: ref.source, externalId: ref.externalId, type: ref.type },
     },
-    select: { status: true },
     orderBy: { updatedAt: "desc" },
   });
-  const tracked = entries.length
+  const latest = entries[0];
+  // Oldest first, numbered the same way as the #2, #3… on My list.
+  const completions = entries
+    .filter((e) => e.status === "COMPLETED" && e.finishedAt)
+    .sort(
+      (a, b) =>
+        a.finishedAt!.getTime() - b.finishedAt!.getTime() ||
+        a.createdAt.getTime() - b.createdAt.getTime(),
+    )
+    .map((e, i) => ({
+      id: e.id,
+      n: i + 1,
+      finishedAt: e.finishedAt!,
+      startedAt: e.startedAt,
+      rating: e.rating,
+      allAchievements: e.allAchievements,
+    }));
+  const tracked = latest
     ? {
-        latestStatus: entries[0].status,
-        completions: entries.filter((e) => e.status === "COMPLETED").length,
+        latestStatus: latest.status,
+        // The status it's in now, unless that's just its latest completion.
+        current: latest.status === "COMPLETED" ? null : { status: latest.status, date: postDate(latest) },
+        completions,
+        ratingScale: user.ratingScale,
       }
     : null;
   return { details, tracked };
@@ -127,7 +146,7 @@ export async function addToList(
         status,
         finishedAt,
         allAchievements,
-        progress: completed && media.totalUnits ? media.totalUnits : open.progress,
+        progress: completed ? (progressTotal(media) ?? open.progress) : open.progress,
         startedAt: open.startedAt ?? (status === "IN_PROGRESS" ? today() : null),
         plannedAt: plannedAtFor(open, status),
         statusAt: today(),
@@ -145,7 +164,7 @@ export async function addToList(
       userId: user.id,
       mediaId: media.id,
       status,
-      progress: completed && media.totalUnits ? media.totalUnits : 0,
+      progress: completed ? (progressTotal(media) ?? 0) : 0,
       // A start date is only implied when they're starting it now.
       startedAt: status === "IN_PROGRESS" ? today() : null,
       finishedAt,
@@ -166,9 +185,19 @@ export async function updateEntry(form: FormData) {
   const id = str(form, "id")!;
   const entry = await db.entry.findFirst({
     where: { id, userId: user.id },
-    include: { media: { select: { totalUnits: true, type: true } } },
+    include: { media: { select: { id: true, totalUnits: true, chapters: true, type: true } } },
   });
   if (!entry) return;
+
+  // Books: the edit form can set how many chapters the book has.
+  if (entry.media.type === "BOOK" && form.has("chapters")) {
+    const chapters = Number(str(form, "chapters"));
+    entry.media.chapters = Number.isInteger(chapters) && chapters > 0 ? chapters : null;
+    await db.media.update({
+      where: { id: entry.media.id },
+      data: { chapters: entry.media.chapters },
+    });
+  }
 
   const statusInput = str(form, "status");
   const status = isStatus(statusInput) ? statusInput : entry.status;
@@ -177,7 +206,8 @@ export async function updateEntry(form: FormData) {
   const rating = str(form, "rating");
   const progressInput = str(form, "progress");
   let progress = progressInput ? Math.max(0, Number(progressInput)) : 0;
-  if (becameCompleted && entry.media.totalUnits) progress = entry.media.totalUnits;
+  const total = progressTotal(entry.media);
+  if (becameCompleted && total) progress = total;
 
   // Dates: use what the user typed. If the field was left empty, fill it in
   // automatically when the status implies it (started / completed).
@@ -286,6 +316,91 @@ export async function logNextEpisode(entryId: string) {
 
   revalidateAll();
   return { episode, title: info.title, finished };
+}
+
+/**
+ * Logs chapters of a book read in one go, e.g. 11-12. `from` comes from the
+ * user, so a book started mid-way isn't counted as 1-12. Optionally sets the
+ * book's chapter count. Reaching the last chapter completes the book, like
+ * watching a show's final episode.
+ */
+export async function logChapters(
+  entryId: string,
+  from: number,
+  to: number,
+  totalChapters?: number | null,
+) {
+  const user = await getCurrentUser();
+  const entry = await db.entry.findFirst({
+    where: { id: entryId, userId: user.id },
+    include: { media: true },
+  });
+  if (!entry || entry.media.type !== "BOOK") return null;
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from) return null;
+
+  const total =
+    totalChapters && Number.isInteger(totalChapters) && totalChapters > 0
+      ? totalChapters
+      : entry.media.chapters;
+  if (total && to > total) return null;
+  const finished = total !== null && to === total && entry.status !== "COMPLETED";
+
+  await db.$transaction([
+    ...(total !== entry.media.chapters
+      ? [db.media.update({ where: { id: entry.mediaId }, data: { chapters: total } })]
+      : []),
+    db.chapterLog.create({
+      data: {
+        userId: user.id,
+        entryId: entry.id,
+        mediaId: entry.mediaId,
+        fromChapter: from,
+        toChapter: to,
+      },
+    }),
+    db.entry.update({
+      where: { id: entry.id },
+      data: {
+        progress: to,
+        startedAt: entry.startedAt ?? today(),
+        ...(finished && { status: "COMPLETED", finishedAt: today(), statusAt: today() }),
+      },
+    }),
+    db.activity.create({
+      data: {
+        userId: user.id,
+        entryId: entry.id,
+        action: finished ? "status:COMPLETED" : `chapters:${from}-${to}`,
+      },
+    }),
+  ]);
+
+  revalidateAll();
+  return { from, to, finished };
+}
+
+/**
+ * Removes a chapter post (one day's logs for a book). If it included the
+ * chapter the book is currently on, progress goes back to before it.
+ */
+export async function removeChapterLogs(ids: string[]) {
+  const user = await getCurrentUser();
+  const logs = await db.chapterLog.findMany({
+    where: { id: { in: ids }, userId: user.id },
+    include: { entry: true },
+  });
+  if (!logs.length) return;
+
+  await db.chapterLog.deleteMany({ where: { id: { in: logs.map((l) => l.id) } } });
+  const entry = logs[0].entry;
+  const lastRemoved = Math.max(...logs.map((l) => l.toChapter));
+  if (entry.progress === lastRemoved) {
+    await db.entry.update({
+      where: { id: entry.id },
+      data: { progress: Math.min(...logs.map((l) => l.fromChapter)) - 1 },
+    });
+  }
+  revalidateAll();
 }
 
 /** Removes an episode post. Undoing the latest episode also rolls progress back. */
