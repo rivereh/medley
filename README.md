@@ -2,9 +2,9 @@
 
 <img src="https://i.imgur.com/Eja82RH.png" width="700px" />
 
-An all-in-one tracker for **movies, TV shows, anime, games and books**, inspired by Letterboxd and AniList. It runs on your own computer, and your list stays in a single database file next to the app.
+An all-in-one tracker for **movies, TV shows, anime, games, books and YouTube videos**, inspired by Letterboxd and AniList. It runs on your own computer, and your list stays in a single database file next to the app.
 
-- **Search** movies and TV (TMDB), anime (AniList), games (IGDB) and books (Open Library) from one search box, and click any result for details.
+- **Search** movies and TV (TMDB), anime (AniList), games (IGDB) and books (Open Library) from one search box, or paste a YouTube link to add a video. Click any result for details.
 - **Log completions** with a date and a rating, either out of 10 or as 5 stars with half stars. Rewatches and replays become their own posts, numbered #1, #2…
 - **Track shows and anime episode by episode.** In-progress shows sit at the top of your list: press **+** to log the next episode, saved with its episode name.
 - **Track books chapter by chapter.** Books in progress sit in the same row: press **+** to log the chapters you read (e.g. 11–14). Each day's reading becomes one post, like "Read chapters 1–10". Add a book's chapter count (Open Library doesn't have them) and reaching the last chapter completes it.
@@ -68,6 +68,10 @@ No key needed.
 ### Books: Open Library
 
 No key needed.
+
+### YouTube videos
+
+No key needed: paste a video link into the search box. (Searching YouTube by name would need a Google API key, so it isn't supported.)
 
 ## Running on CasaOS (or any Docker host)
 

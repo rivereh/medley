@@ -44,7 +44,7 @@ async function SearchBody({
         <input
           name="q"
           defaultValue={query}
-          placeholder="Search movies, shows, anime, games and books…"
+          placeholder="Search movies, shows, anime, games and books, or paste a YouTube link…"
           className="flex-1 rounded bg-surface px-3 py-2 outline-none focus:ring-2 focus:ring-accent"
           autoFocus
         />
@@ -96,6 +96,7 @@ async function ResultsSection({
   // API calls (it would cut them off when the prerender finishes).
   await connection();
   const { search, isConfigured, setupHint } = CATEGORIES[category];
+  const { emptyHint } = CATEGORIES[category] as { emptyHint?: string };
   if (!isConfigured()) return <p className="text-sm text-muted">{setupHint} to enable this.</p>;
 
   let results;
@@ -105,7 +106,7 @@ async function ResultsSection({
     console.error(err);
     return <p className="text-sm text-red-400">Search failed. Check the server logs.</p>;
   }
-  if (results.length === 0) return <p className="text-sm text-muted">No results.</p>;
+  if (results.length === 0) return <p className="text-sm text-muted">{emptyHint ?? "No results."}</p>;
 
   // Which of these results are already on the user's list?
   const user = await getCurrentUser();

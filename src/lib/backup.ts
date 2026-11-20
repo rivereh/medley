@@ -12,7 +12,7 @@ import { isStatus, isType } from "./labels";
 export const BACKUP_FORMAT = "medley-export";
 export const BACKUP_VERSION = 1;
 
-const SOURCES = ["TMDB", "ANILIST", "IGDB", "OPENLIBRARY"] as const;
+const SOURCES = ["TMDB", "ANILIST", "IGDB", "OPENLIBRARY", "YOUTUBE"] as const;
 const SCALES = ["TEN", "FIVE_STARS"] as const;
 
 type Source = (typeof SOURCES)[number];

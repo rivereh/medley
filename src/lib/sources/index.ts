@@ -4,6 +4,7 @@ import { getAnilistDetails, searchAnilist } from "./anilist";
 import { getIgdbDetails, hasIgdbCredentials, searchIgdb } from "./igdb";
 import { getOpenLibraryDetails, searchOpenLibrary } from "./openlibrary";
 import { getTmdbDetails, hasTmdbToken, searchTmdb } from "./tmdb";
+import { getYoutubeDetails, searchYoutube } from "./youtube";
 import type { MediaDetails, SearchResult } from "./types";
 
 export type { MediaDetails, SearchResult };
@@ -35,6 +36,14 @@ export const CATEGORIES = {
     isConfigured: () => true,
     setupHint: "",
   },
+  videos: {
+    label: "YouTube",
+    search: searchYoutube,
+    isConfigured: () => true,
+    setupHint: "",
+    // Searching YouTube needs an API key, so only pasted links work.
+    emptyHint: "Paste a YouTube video link to add it.",
+  },
 } satisfies Record<
   string,
   {
@@ -42,6 +51,8 @@ export const CATEGORIES = {
     search: (q: string) => Promise<SearchResult[]>;
     isConfigured: () => boolean;
     setupHint: string;
+    /** Shown instead of "No results." */
+    emptyHint?: string;
   }
 >;
 
@@ -62,5 +73,7 @@ export function getDetails(
       return getIgdbDetails(externalId);
     case "OPENLIBRARY":
       return getOpenLibraryDetails(externalId);
+    case "YOUTUBE":
+      return getYoutubeDetails(externalId);
   }
 }

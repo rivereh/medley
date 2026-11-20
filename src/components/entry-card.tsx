@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 import { removeEntry, removeExtraPost, updateEntry } from "@/app/actions";
 import type { Entry, Media } from "@/generated/prisma/client";
 import { daysBetween, formatDuration, postDate, toDayInput } from "@/lib/dates";
-import { STATUS_LABELS, tracksStart, TYPE_LABELS } from "@/lib/labels";
+import { hasProgress, STATUS_LABELS, tracksStart, TYPE_LABELS } from "@/lib/labels";
 import { DayText, TimestampText } from "./date-text";
 import { DetailsModal } from "./details-modal";
 import { Poster } from "./poster";
@@ -176,7 +176,7 @@ function Summary({
     if (e.progress || e.media.chapters) {
       progress = `ch. ${e.progress}${e.media.chapters ? ` / ${e.media.chapters}` : ""}`;
     }
-  } else if (e.media.type !== "MOVIE" && (e.progress || e.media.totalUnits)) {
+  } else if (hasProgress(e.media.type) && (e.progress || e.media.totalUnits)) {
     progress = `${e.progress}${e.media.totalUnits ? ` / ${e.media.totalUnits}` : ""} eps`;
   }
 
@@ -254,7 +254,7 @@ function EditForm({
             ))}
           </select>
         </Field>
-        {e.media.type !== "MOVIE" && (
+        {hasProgress(e.media.type) && (
           <Field
             label={
               e.media.type === "GAME"

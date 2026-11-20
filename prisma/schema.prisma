@@ -16,6 +16,7 @@ enum MediaType {
   ANIME
   GAME
   BOOK
+  VIDEO // YouTube
 }
 
 enum MediaSource {
@@ -23,6 +24,7 @@ enum MediaSource {
   ANILIST
   IGDB
   OPENLIBRARY
+  YOUTUBE
 }
 
 enum EntryStatus {

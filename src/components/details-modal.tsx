@@ -139,6 +139,17 @@ export function DetailsModal({
                 ))}
               </dl>
             )}
+
+            {result.source === "YOUTUBE" && (
+              <a
+                href={`https://www.youtube.com/watch?v=${result.externalId}`}
+                target="_blank"
+                rel="noreferrer"
+                className="self-start text-sm text-accent underline"
+              >
+                Watch on YouTube
+              </a>
+            )}
           </div>
         </div>
 

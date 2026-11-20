@@ -28,6 +28,7 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "covers.openlibrary.org" },
       { protocol: "https", hostname: "archive.org" },
       { protocol: "https", hostname: "**.archive.org" },
+      { protocol: "https", hostname: "i.ytimg.com" },
     ],
   },
   turbopack: {

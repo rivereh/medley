@@ -9,7 +9,7 @@ import { UrlSelect } from "@/components/url-select";
 import type { ChapterLog, Entry, EpisodeLog, Media } from "@/generated/prisma/client";
 import { postDate, toDay } from "@/lib/dates";
 import { db } from "@/lib/db";
-import { isStatus, isType, STATUS_LABELS, tracksStart, TYPE_LABELS } from "@/lib/labels";
+import { hasProgress, isStatus, isType, STATUS_LABELS, tracksStart, TYPE_LABELS } from "@/lib/labels";
 import { getCurrentUser } from "@/lib/user";
 
 // My list mixes several kinds of posts: entries (planning / completed / …),
@@ -270,7 +270,7 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
   const titleFilter = query ? { title: { contains: query } } : {};
   const mediaFilter =
     type || query ? { media: { ...(type && { type }), ...titleFilter } } : {};
-  const showsInProgress = type !== "MOVIE";
+  const showsInProgress = !type || hasProgress(type);
 
   // Everything is loaded once; the tabs and counts are worked out from it.
   const [entries, episodes, chapterLogs, inProgress] = await Promise.all([

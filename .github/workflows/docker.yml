@@ -3,7 +3,7 @@
 #
 # Each architecture builds on its own native runner (emulating ARM makes the
 # Next.js build very slow), then one multi-arch image is published under the
-# tag's name and `latest`.
+# tag's name, and as `latest` if it's the newest version.
 
 name: Docker image
 
@@ -18,6 +18,11 @@ env:
 permissions:
   contents: read
   packages: write
+
+# Several tags pushed at once publish one after another, never side by side.
+concurrency:
+  group: docker-publish
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -74,14 +79,22 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Only the highest version gets `latest`, even if an older tag's build
+      # finishes after it.
+      - id: newest
+        run: |
+          newest=$(git ls-remote --tags --refs "https://github.com/${{ github.repository }}.git" 'v*' \
+            | sed 's#.*refs/tags/##' | sort -V | tail -n 1)
+          echo "Newest tag: $newest"
+          echo "is_newest=$([ "$newest" = "${{ github.ref_name }}" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
-          # The tag as-is (v0.2), plus latest for tagged releases.
+          # The tag as-is (v0.2), plus latest for the newest release.
           tags: |
             type=ref,event=tag
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' && steps.newest.outputs.is_newest == 'true' }}
             type=sha,enable=${{ github.ref_type != 'tag' }}
       - name: Publish multi-arch image
         working-directory: /tmp/digests

@@ -10,9 +10,14 @@ export const STATUS_LABELS = {
 
 export type Status = keyof typeof STATUS_LABELS;
 
-export const TYPE_LABELS = { MOVIE: "Movie", TV: "TV", ANIME: "Anime", GAME: "Game", BOOK: "Book" } as const;
+export const TYPE_LABELS = { MOVIE: "Movie", TV: "TV", ANIME: "Anime", GAME: "Game", BOOK: "Book", VIDEO: "YouTube" } as const;
 
 export type Type = keyof typeof TYPE_LABELS;
+
+/** Movies and videos are just watched or not; everything else counts progress. */
+export function hasProgress(type: Type) {
+  return type !== "MOVIE" && type !== "VIDEO";
+}
 
 /**
  * Games and books have no episode posts, so starting one is its own post and
