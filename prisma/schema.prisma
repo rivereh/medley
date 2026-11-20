@@ -64,6 +64,7 @@ model Media {
   source     MediaSource
   externalId String
   title      String
+  creator    String? // YouTube channel or book author(s); searchable on My list
   posterUrl  String?
   year       Int?
   overview   String?

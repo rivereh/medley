@@ -16,4 +16,6 @@ export type MediaDetails = SearchResult & {
   score: number | null; // 0-100
   totalUnits: number | null; // episodes for shows/anime
   facts: { label: string; value: string }[];
+  /** YouTube channel or book author(s), shown on posts and searchable on My list. */
+  creator?: string | null;
 };

@@ -15,10 +15,13 @@ export function InProgressCard({
   entryId,
   media,
   progress: savedProgress,
+  eager = false,
 }: {
   entryId: string;
   media: Media;
   progress: number;
+  /** Starts on screen: load its poster right away. */
+  eager?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [showDetails, setShowDetails] = useState(false);
@@ -92,7 +95,7 @@ export function InProgressCard({
           aria-label={`Show details for ${media.title}`}
           className="block w-full rounded transition group-hover:brightness-110"
         >
-          <Poster src={media.posterUrl} alt={media.title} sizes="120px" />
+          <Poster src={media.posterUrl} alt={media.title} sizes="120px" eager={eager} />
         </button>
 
         {/* Progress bar along the bottom edge */}

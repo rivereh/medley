@@ -24,7 +24,7 @@ function describe(ranges: ChapterPost["ranges"]) {
 }
 
 /** A post for chapters of a book read on one day, logged with the + button. */
-export function ChapterCard({ post }: { post: ChapterPost }) {
+export function ChapterCard({ post, eager = false }: { post: ChapterPost; eager?: boolean }) {
   const [showDetails, setShowDetails] = useState(false);
   const [removing, startRemove] = useTransition();
   const { media } = post;
@@ -55,7 +55,7 @@ export function ChapterCard({ post }: { post: ChapterPost }) {
         aria-label={`Show details for ${media.title}`}
         className="w-20 shrink-0 rounded transition hover:brightness-110 hover:ring-2 hover:ring-accent"
       >
-        <Poster src={media.posterUrl} alt={media.title} fill sizes="80px" />
+        <Poster src={media.posterUrl} alt={media.title} fill sizes="80px" eager={eager} />
       </button>
 
       <div className="flex min-h-30 min-w-0 flex-1 flex-col gap-2">

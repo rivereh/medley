@@ -31,6 +31,7 @@ function fromRow(m: Media): MediaDetails {
     score: m.score,
     totalUnits: m.totalUnits,
     facts: parseJson<MediaDetails["facts"]>(m.facts, []),
+    creator: m.creator,
   };
 }
 
@@ -46,6 +47,7 @@ async function save(d: MediaDetails) {
     genres: JSON.stringify(d.genres),
     score: d.score,
     facts: JSON.stringify(d.facts),
+    creator: d.creator ?? null,
     detailsFetchedAt: new Date(),
   };
   await db.media.upsert({

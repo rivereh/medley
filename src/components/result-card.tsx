@@ -6,7 +6,15 @@ import type { SearchResult } from "@/lib/sources/types";
 import { DetailsModal } from "./details-modal";
 import { Poster } from "./poster";
 
-export function ResultCard({ result, status }: { result: SearchResult; status: Status | null }) {
+export function ResultCard({
+  result,
+  status,
+  eager = false,
+}: {
+  result: SearchResult;
+  status: Status | null;
+  eager?: boolean;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -17,7 +25,7 @@ export function ResultCard({ result, status }: { result: SearchResult; status: S
         className="group flex w-full flex-col gap-2 text-left"
       >
         <div className="relative w-full transition group-hover:brightness-110 group-hover:ring-2 group-hover:ring-accent rounded">
-          <Poster src={result.posterUrl} alt={result.title} />
+          <Poster src={result.posterUrl} alt={result.title} eager={eager} />
           {status && (
             <span className="absolute left-1 top-1 rounded bg-black/75 px-1.5 py-0.5 text-[10px] font-medium text-accent">
               {STATUS_LABELS[status]}

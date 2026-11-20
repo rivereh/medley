@@ -138,6 +138,7 @@ export async function getOpenLibraryDetails(id: string): Promise<MediaDetails> {
     // Only when enough people have rated it to mean something.
     score: avg && (ratings?.summary?.count ?? 0) >= 5 ? Math.round((avg / 5) * 100) : null,
     totalUnits: d.number_of_pages_median ?? null,
+    creator: d.author_name?.slice(0, 4).join(", ") || null,
     facts,
   };
 }

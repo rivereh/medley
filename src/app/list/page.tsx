@@ -196,11 +196,12 @@ function compare(sort: SortKey, a: Item, b: Item, times: PostTimes) {
 
 /**
  * When each entry post's status was logged, from the activity log. `loggedAt`
- * is used by the "Date added" sort. `hoverTimes` is for hovering a post's date. Dates are stored as calendar days, so a time is
- * only shown when it was logged on that same day (a backdated completion has
- * no known time). Entries created with a status log "added" instead.
+ * is used by the "Date added" sort; `hoverTimes` is for hovering a post's
+ * date. Dates are stored as calendar days, so a hover time is only shown when
+ * it was logged on that same day (a backdated completion has no known time).
+ * Entries created with a status log "added" instead.
  */
-async function getPostTimes(items: Item[]) {
+async function getPostTimes(userId: string, items: Item[]) {
   const posts = items.flatMap((i) => {
     if (i.kind === "episode" || i.kind === "chapters") return [];
     const e = i.entry;
@@ -208,14 +209,15 @@ async function getPostTimes(items: Item[]) {
     if (i.kind === "started") return [{ id: i.id, entryId: e.id, status: "IN_PROGRESS", day: e.startedAt }];
     return [{ id: i.id, entryId: e.id, status: e.status, day: postDate(e) }];
   });
+  // All of the user's status changes, matched up below. (Listing the entry
+  // ids in the query instead breaks past SQLite's limit on query parameters.)
   const activity = await db.activity.findMany({
-    where: {
-      entryId: { in: [...new Set(posts.map((p) => p.entryId))] },
-      OR: [{ action: "added" }, { action: { startsWith: "status:" } }],
-    },
+    where: { userId, OR: [{ action: "added" }, { action: { startsWith: "status:" } }] },
     select: { entryId: true, action: true, createdAt: true },
     orderBy: { createdAt: "desc" },
   });
+  const byEntry = new Map<string, typeof activity>();
+  for (const a of activity) byEntry.set(a.entryId, [...(byEntry.get(a.entryId) ?? []), a]);
 
   const hoverTimes = new Map<string, Date>();
   const loggedAt: LoggedAt = new Map();
@@ -227,7 +229,7 @@ async function getPostTimes(items: Item[]) {
       list.find((a) => a.action === `status:${p.status}`) ??
       (createdAs ? list.find((a) => a.action === "added") : undefined);
 
-    const forEntry = activity.filter((a) => a.entryId === p.entryId);
+    const forEntry = byEntry.get(p.entryId) ?? [];
     const logged = find(forEntry);
     if (logged) loggedAt.set(p.id, logged.createdAt);
 
@@ -239,6 +241,16 @@ async function getPostTimes(items: Item[]) {
   }
   return { hoverTimes, loggedAt };
 }
+
+// Posts are sorted and counted across the whole list, but only this many are
+// sent to the browser at first; "Show more" adds another page. (Sending every
+// post made the page tens of MB and many seconds to load on a long list.)
+const PAGE_SIZE = 50;
+
+// How many posters near the top load right away rather than lazily: one row
+// of In progress tiles, and the first few posts.
+const EAGER_TILES = 8;
+const EAGER_POSTS = 3;
 
 // "Episodes" is an extra tab next to the statuses.
 const EPISODES_TAB = "EPISODES";
@@ -264,10 +276,14 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
     typeof params.sort === "string" && params.sort in SORTS
       ? (params.sort as SortKey)
       : DEFAULT_SORT;
+  const show = Math.max(PAGE_SIZE, Math.floor(Number(params.show)) || PAGE_SIZE);
 
   const user = await getCurrentUser();
   // Type filter and title search apply to every list, count and the In Progress row.
-  const titleFilter = query ? { title: { contains: query } } : {};
+  // Matches titles, and channels / authors (so a channel's name finds its videos).
+  const titleFilter = query
+    ? { OR: [{ title: { contains: query } }, { creator: { contains: query } }] }
+    : {};
   const mediaFilter =
     type || query ? { media: { ...(type && { type }), ...titleFilter } } : {};
   const showsInProgress = !type || hasProgress(type);
@@ -306,17 +322,26 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
             .filter((e) => e.status === status)
             .map((entry) => ({ kind: "entry" as const, id: entry.id, entry }))
         : [...feed, ...episodeItems, ...chapterItems];
-  const times = await getPostTimes(unsorted);
+  const times = await getPostTimes(user.id, unsorted);
   const items = unsorted.sort((a, b) => compare(sort, a, b, times));
+  const visible = items.slice(0, show);
+
+  // Same page with one more page of posts.
+  const showMoreHref = (() => {
+    const p = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (typeof value === "string" && key !== "show") p.set(key, value);
+    }
+    p.set("show", String(show + PAGE_SIZE));
+    return `/list?${p}`;
+  })();
 
   // Number each completed post among all completions of the same title
   // (oldest first), so rewatches/replays show as #2, #3…
+  // (All completions, not just the shown titles': listing their ids in the
+  // query breaks past SQLite's limit on query parameters.)
   const allCompleted = await db.entry.findMany({
-    where: {
-      userId: user.id,
-      status: "COMPLETED",
-      mediaId: { in: [...new Set(entries.map((e) => e.mediaId))] },
-    },
+    where: { userId: user.id, status: "COMPLETED" },
     select: { id: true, mediaId: true },
     orderBy: [{ finishedAt: "asc" }, { createdAt: "asc" }],
   });
@@ -348,9 +373,14 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
             In progress
           </h2>
           <ul className="grid grid-cols-3 gap-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8">
-            {inProgress.map((e) => (
+            {inProgress.map((e, n) => (
               <li key={e.id}>
-                <InProgressCard entryId={e.id} media={e.media} progress={e.progress} />
+                <InProgressCard
+                  entryId={e.id}
+                  media={e.media}
+                  progress={e.progress}
+                  eager={n < EAGER_TILES}
+                />
               </li>
             ))}
           </ul>
@@ -412,7 +442,7 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
         </p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {items.map((i) => (
+          {visible.map((i, n) => (
             <li key={i.id}>
               {i.kind === "entry" ? (
                 <EntryCard
@@ -420,22 +450,39 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
                   completion={completionNumber.get(i.id)}
                   ratingScale={user.ratingScale}
                   time={times.hoverTimes.get(i.id)}
+                  eager={n < EAGER_POSTS}
                 />
               ) : i.kind === "chapters" ? (
-                <ChapterCard post={i.reading} />
+                <ChapterCard post={i.reading} eager={n < EAGER_POSTS} />
               ) : i.kind !== "episode" ? (
                 <EntryCard
                   entry={i.entry}
                   ratingScale={user.ratingScale}
                   post={i.kind}
                   time={times.hoverTimes.get(i.id)}
+                  eager={n < EAGER_POSTS}
                 />
               ) : (
-                <EpisodeCard log={i.log} />
+                <EpisodeCard log={i.log} eager={n < EAGER_POSTS} />
               )}
             </li>
           ))}
         </ul>
+      )}
+
+      {items.length > visible.length && (
+        <div className="flex flex-col items-center gap-1">
+          <Link
+            href={showMoreHref}
+            scroll={false}
+            className="rounded bg-surface px-4 py-2 text-sm font-medium hover:bg-white/10"
+          >
+            Show more
+          </Link>
+          <span className="text-xs text-muted">
+            Showing {visible.length} of {items.length}
+          </span>
+        </div>
       )}
     </>
   );

@@ -45,6 +45,7 @@ export async function buildBackup(userId: string) {
       externalId: m.externalId,
       type: m.type,
       title: m.title,
+      creator: m.creator,
       posterUrl: m.posterUrl,
       year: m.year,
       overview: m.overview,
@@ -179,8 +180,9 @@ export async function importBackup(
         year: int(m.year),
         overview: str(m.overview),
         totalUnits: int(m.totalUnits),
-        // Only when the file has it, so older exports don't clear a count.
+        // Only when the file has them, so older exports don't clear them.
         ...(int(m.chapters) !== null && { chapters: int(m.chapters) }),
+        ...(str(m.creator) && { creator: str(m.creator) }),
       };
       const row = await tx.media.upsert({
         where: { source_externalId: { source, externalId } },

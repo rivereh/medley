@@ -28,17 +28,21 @@ export function EntryCard({
   ratingScale,
   post = "entry",
   time,
+  eager = false,
 }: {
   entry: EntryWithMedia;
   completion?: CompletionNumber;
   ratingScale: RatingScale;
   post?: "entry" | "planned" | "started";
   time?: Date | null;
+  /** Starts on screen: load its poster right away. */
+  eager?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [removing, startRemove] = useTransition();
   const isGame = e.media.type === "GAME";
+  const isVideo = e.media.type === "VIDEO";
   const perfect = isGame && e.allAchievements && post === "entry";
 
   const remove = () => {
@@ -69,17 +73,29 @@ export function EntryCard({
         Remove
       </button>
 
-      {/* Poster fills the card's height; min-h keeps short cards at a 2:3 poster. */}
+      {/* Poster fills the card's height; min-h keeps short cards at a 2:3 poster.
+          YouTube thumbnails get a wide frame instead, also filling the height.
+          They use YouTube's medium thumbnail: true 16:9, without the black
+          bars of the standard one. */}
       <button
         type="button"
         onClick={() => setShowDetails(true)}
         aria-label={`Show details for ${e.media.title}`}
-        className="w-20 shrink-0 rounded transition hover:brightness-110 hover:ring-2 hover:ring-accent"
+        className={`shrink-0 rounded transition hover:brightness-110 hover:ring-2 hover:ring-accent ${
+          isVideo ? "w-36 sm:w-44" : "w-20"
+        }`}
       >
-        <Poster src={e.media.posterUrl} alt={e.media.title} fill sizes="80px" />
+        <Poster
+          src={isVideo ? `https://i.ytimg.com/vi/${e.media.externalId}/mqdefault.jpg` : e.media.posterUrl}
+          alt={e.media.title}
+          fill
+          sizes={isVideo ? "176px" : "80px"}
+          eager={eager}
+        />
       </button>
 
-      <div className="flex min-h-30 min-w-0 flex-1 flex-col gap-2">
+      {/* Video cards can be shorter: their wide thumbnail sets no tall minimum. */}
+      <div className={`flex min-w-0 flex-1 flex-col gap-2 ${isVideo ? "min-h-24" : "min-h-30"}`}>
         <div className="pr-16">
           <h2 className="text-lg font-semibold leading-tight">
             <button
@@ -92,6 +108,8 @@ export function EntryCard({
           </h2>
           <p className="text-xs text-muted">
             {TYPE_LABELS[e.media.type]}
+            {/* The channel for YouTube videos, the author for books */}
+            {e.media.creator ? ` · ${e.media.creator}` : ""}
             {e.media.year ? ` · ${e.media.year}` : ""}
           </p>
         </div>

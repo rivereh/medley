@@ -110,6 +110,7 @@ export async function getYoutubeDetails(id: string): Promise<MediaDetails> {
     externalId: id,
     type: "VIDEO",
     title: o.title,
+    creator: o.author_name ?? null,
     year: page?.year ?? null,
     posterUrl: thumbnail(id),
     overview: page?.description ?? null,

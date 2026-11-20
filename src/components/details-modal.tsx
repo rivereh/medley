@@ -90,7 +90,7 @@ export function DetailsModal({
 
         <div className="-mt-20 flex flex-col gap-6 px-5 pb-6 sm:flex-row">
           <div className="relative w-28 shrink-0 sm:w-40">
-            <Poster src={result.posterUrl} alt={result.title} />
+            <Poster src={result.posterUrl} alt={result.title} eager />
           </div>
 
           <div className="flex min-w-0 flex-1 flex-col gap-4 sm:pt-20">

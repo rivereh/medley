@@ -11,7 +11,7 @@ import { Poster } from "./poster";
 type EpisodeWithMedia = EpisodeLog & { media: Media };
 
 /** A post for one watched episode, logged with the +1 button. */
-export function EpisodeCard({ log }: { log: EpisodeWithMedia }) {
+export function EpisodeCard({ log, eager = false }: { log: EpisodeWithMedia; eager?: boolean }) {
   const [showDetails, setShowDetails] = useState(false);
   const [editing, setEditing] = useState(false);
   const [removing, startRemove] = useTransition();
@@ -48,7 +48,7 @@ export function EpisodeCard({ log }: { log: EpisodeWithMedia }) {
         aria-label={`Show details for ${media.title}`}
         className="w-20 shrink-0 rounded transition hover:brightness-110 hover:ring-2 hover:ring-accent"
       >
-        <Poster src={media.posterUrl} alt={media.title} fill sizes="80px" />
+        <Poster src={media.posterUrl} alt={media.title} fill sizes="80px" eager={eager} />
       </button>
 
       <div className="flex min-h-30 min-w-0 flex-1 flex-col gap-2">

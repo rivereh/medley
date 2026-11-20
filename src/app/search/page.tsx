@@ -7,6 +7,8 @@ import { CATEGORIES, type Category } from "@/lib/sources";
 import { getCurrentUser } from "@/lib/user";
 
 const CATEGORY_KEYS = Object.keys(CATEGORIES) as Category[];
+// Posters in the first row of results load right away rather than lazily.
+const EAGER_RESULTS = 6;
 // How many results each section shows on the "All" tab.
 const PREVIEW_COUNT = 12;
 
@@ -60,7 +62,7 @@ async function SearchBody({
       </nav>
 
       {query &&
-        shown.map((c) => (
+        shown.map((c, n) => (
           <section key={c} className="flex flex-col gap-3">
             {!active && (
               <div className="flex items-baseline justify-between">
@@ -75,6 +77,8 @@ async function SearchBody({
                 category={c}
                 query={query}
                 limit={active ? undefined : PREVIEW_COUNT}
+                // Only the top section starts on screen.
+                eagerCount={n === 0 ? EAGER_RESULTS : 0}
               />
             </Suspense>
           </section>
@@ -87,10 +91,13 @@ async function ResultsSection({
   category,
   query,
   limit,
+  eagerCount = 0,
 }: {
   category: Category;
   query: string;
   limit?: number;
+  /** How many of the first results load their posters right away. */
+  eagerCount?: number;
 }) {
   // Search results are always per-request: never let Next prerender these
   // API calls (it would cut them off when the prerender finishes).
@@ -126,9 +133,13 @@ async function ResultsSection({
 
   return (
     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-      {results.map((r) => (
+      {results.map((r, n) => (
         <li key={`${r.type}-${r.externalId}`}>
-          <ResultCard result={r} status={statusByKey.get(`${r.type}:${r.externalId}`) ?? null} />
+          <ResultCard
+            result={r}
+            status={statusByKey.get(`${r.type}:${r.externalId}`) ?? null}
+            eager={n < eagerCount}
+          />
         </li>
       ))}
     </ul>
