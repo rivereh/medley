@@ -1,9 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
-import { getMediaEpisodes } from "@/app/actions";
-import { formatDay } from "@/lib/dates";
+import { useEffect, useState, useTransition } from "react";
+import { getMediaEpisodes, logEpisode } from "@/app/actions";
+import { formatDay, formatTimestamp } from "@/lib/dates";
 import type { SearchResult } from "@/lib/sources/types";
 
 // `loadedAt` decides which episodes haven't aired yet.
@@ -12,11 +12,41 @@ type Loaded = NonNullable<Awaited<ReturnType<typeof getMediaEpisodes>>> & { load
 // Long shows start collapsed so the modal opens short.
 const COLLAPSED = 12;
 
-/** The details modal's episode list for a show or anime, with thumbnails. */
-export function EpisodeList({ result }: { result: SearchResult }) {
+/**
+ * The details modal's episode list for a show or anime, with thumbnails. Each
+ * episode shows when it was last watched and can be logged on its own.
+ */
+export function EpisodeList({
+  result,
+  onLogged,
+}: {
+  result: SearchResult;
+  /** Called after an episode is logged (it may have changed the list status). */
+  onLogged?: () => void;
+}) {
   const [data, setData] = useState<Loaded | null>(null);
   const [failed, setFailed] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  // Bumped after logging an episode, to reload the watched dates.
+  const [reloads, setReloads] = useState(0);
+  const [logging, setLogging] = useState<number | null>(null);
+  const [, startTransition] = useTransition();
+
+  const log = (episode: number) => {
+    setLogging(episode);
+    startTransition(async () => {
+      try {
+        await logEpisode(
+          { source: result.source, type: result.type, externalId: result.externalId },
+          episode,
+        );
+        setReloads((n) => n + 1);
+        onLogged?.();
+      } finally {
+        setLogging(null);
+      }
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -26,13 +56,13 @@ export function EpisodeList({ result }: { result: SearchResult }) {
     return () => {
       cancelled = true;
     };
-  }, [result.source, result.type, result.externalId]);
+  }, [result.source, result.type, result.externalId, reloads]);
 
   if (failed) return <p className="text-sm text-red-400">Couldn’t load episodes.</p>;
   if (!data) return <p className="text-sm text-muted">Loading episodes…</p>;
   if (data.episodes.length === 0) return null;
 
-  const { episodes, progress, loadedAt } = data;
+  const { episodes, progress, lastWatched, loadedAt } = data;
   const shown = expanded ? episodes : episodes.slice(0, COLLAPSED);
 
   return (
@@ -42,7 +72,9 @@ export function EpisodeList({ result }: { result: SearchResult }) {
       </h3>
       <ol className="flex flex-col gap-2">
         {shown.map((ep) => {
-          const watched = ep.number <= progress;
+          const watchedAt = lastWatched[ep.number] ?? null;
+          // Counted as watched by progress alone (e.g. completed in one go): no date.
+          const watched = watchedAt !== null || ep.number <= progress;
           const upcoming = ep.airDate !== null && ep.airDate.getTime() > loadedAt;
           return (
             <li
@@ -68,11 +100,11 @@ export function EpisodeList({ result }: { result: SearchResult }) {
                 )}
                 {watched && (
                   <span className="absolute left-1 top-1 rounded bg-accent px-1.5 text-[11px] font-semibold text-black">
-                    ✓ Watched
+                    ✓
                   </span>
                 )}
               </div>
-              <div className="flex min-w-0 flex-col gap-0.5 text-sm">
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
                 <p className="text-xs text-muted">
                   {ep.season && ep.seasonEpisode
                     ? `S${ep.season} E${ep.seasonEpisode} · ep ${ep.number}`
@@ -84,7 +116,23 @@ export function EpisodeList({ result }: { result: SearchResult }) {
                   {ep.airDate && ep.runtime ? " · " : ""}
                   {ep.runtime ? `${ep.runtime} min` : ""}
                 </p>
+                {watched && (
+                  <p className="text-xs font-medium text-accent">
+                    {watchedAt ? `Watched ${formatTimestamp(watchedAt)}` : "Watched"}
+                  </p>
+                )}
               </div>
+              {!upcoming && (
+                <button
+                  type="button"
+                  onClick={() => log(ep.number)}
+                  disabled={logging !== null}
+                  title={`Log episode ${ep.number} as watched now`}
+                  className="self-center rounded bg-surface px-3 py-1 text-xs font-medium text-foreground hover:bg-white/10 disabled:opacity-50"
+                >
+                  {logging === ep.number ? "Logging…" : watched ? "Log again" : "Log"}
+                </button>
+              )}
             </li>
           );
         })}

@@ -1,11 +1,14 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { Suspense } from "react";
 import { type CompletionNumber, EntryCard } from "@/components/entry-card";
 import { ChapterCard, type ChapterPost } from "@/components/chapter-card";
-import { EpisodeCard } from "@/components/episode-card";
+import { EpisodeCard, type WatchNumber } from "@/components/episode-card";
+import { GridCard } from "@/components/grid-card";
 import { InProgressCard } from "@/components/in-progress-card";
 import { ListSearch } from "@/components/list-search";
 import { UrlSelect } from "@/components/url-select";
+import { type ListView, VIEW_COOKIE, ViewToggle } from "@/components/view-toggle";
 import type { ChapterLog, Entry, EpisodeLog, Media } from "@/generated/prisma/client";
 import { postDate, toDay } from "@/lib/dates";
 import { db } from "@/lib/db";
@@ -245,12 +248,14 @@ async function getPostTimes(userId: string, items: Item[]) {
 // Posts are sorted and counted across the whole list, but only this many are
 // sent to the browser at first; "Show more" adds another page. (Sending every
 // post made the page tens of MB and many seconds to load on a long list.)
-const PAGE_SIZE = 50;
+// (60 fills whole rows of the grid at 2, 3, 4 or 6 columns.)
+const PAGE_SIZE = 60;
 
 // How many posters near the top load right away rather than lazily: one row
 // of In progress tiles, and the first few posts.
 const EAGER_TILES = 8;
 const EAGER_POSTS = 3;
+const EAGER_GRID = 6;
 
 // "Episodes" is an extra tab next to the statuses.
 const EPISODES_TAB = "EPISODES";
@@ -277,6 +282,12 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
       ? (params.sort as SortKey)
       : DEFAULT_SORT;
   const show = Math.max(PAGE_SIZE, Math.floor(Number(params.show)) || PAGE_SIZE);
+  // List (posts) or grid (one card per title): from the URL, else the last
+  // one picked (remembered in a cookie by the toggle). Episodes are always a list.
+  const viewParam = params.view === "grid" || params.view === "list" ? params.view : null;
+  const view: ListView =
+    viewParam ?? ((await cookies()).get(VIEW_COOKIE)?.value === "grid" ? "grid" : "list");
+  const grid = view === "grid" && !episodesTab;
 
   const user = await getCurrentUser();
   // Type filter and title search apply to every list, count and the In Progress row.
@@ -312,18 +323,41 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
   const episodeItems = episodes.map((log) => ({ kind: "episode" as const, id: log.id, log }));
   // Chapter posts show under "All" only.
   const chapterItems = chapterPosts(chapterLogs);
-  const total = feed.length + episodes.length + chapterItems.length;
+  // The grid shows each title once (its most recently updated post, among
+  // those in the current tab).
+  const cardFor = new Map<string, EntryItem>();
+  for (const e of entries) {
+    if (status && e.status !== status) continue;
+    const seen = cardFor.get(e.mediaId);
+    if (!seen || e.updatedAt > seen.updatedAt) cardFor.set(e.mediaId, e);
+  }
+  const total = grid && !status ? cardFor.size : feed.length + episodes.length + chapterItems.length;
 
-  const unsorted: Item[] =
-    episodesTab
-      ? episodeItems
+  // The list's posts, sorted. The grid is built from the same order, so each
+  // title sits where its first post would: watching an episode or reading a
+  // chapter brings the title to the front in "Date" order, as in the list.
+  const entryItems = entries.map((entry) => ({ kind: "entry" as const, id: entry.id, entry }));
+  const posts: Item[] = episodesTab
+    ? episodeItems
+    : grid
+      ? // Every entry (the feed leaves out unfinished shows' own posts), plus
+        // the episode and reading posts that can bring a title forward.
+        [...entryItems, ...episodeItems, ...chapterItems]
       : status
-        ? entries
-            .filter((e) => e.status === status)
-            .map((entry) => ({ kind: "entry" as const, id: entry.id, entry }))
+        ? entryItems.filter((i) => i.entry.status === status)
         : [...feed, ...episodeItems, ...chapterItems];
-  const times = await getPostTimes(user.id, unsorted);
-  const items = unsorted.sort((a, b) => compare(sort, a, b, times));
+  const times = await getPostTimes(user.id, posts);
+  const sorted = posts.sort((a, b) => compare(sort, a, b, times));
+
+  const mediaOf = (i: Item) =>
+    i.kind === "episode" ? i.log.mediaId : i.kind === "chapters" ? i.reading.media.id : i.entry.mediaId;
+  const items: Item[] = grid
+    ? [...new Set(sorted.map(mediaOf))].flatMap((mediaId) => {
+        const entry = cardFor.get(mediaId);
+        // Titles with only standalone episode logs aren't on the list: no card.
+        return entry ? [{ kind: "entry" as const, id: entry.id, entry }] : [];
+      })
+    : sorted;
   const visible = items.slice(0, show);
 
   // Same page with one more page of posts.
@@ -345,6 +379,19 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
     select: { id: true, mediaId: true },
     orderBy: [{ finishedAt: "asc" }, { createdAt: "asc" }],
   });
+
+  // Number each episode post among all watches of that episode (oldest
+  // first), so rewatching an episode shows as #2, #3…
+  const watchNumber = new Map<string, WatchNumber>();
+  const watchGroups = new Map<string, typeof episodes>();
+  for (const l of episodes) {
+    const key = `${l.mediaId}:${l.episode}`;
+    watchGroups.set(key, [...(watchGroups.get(key) ?? []), l]);
+  }
+  for (const group of watchGroups.values()) {
+    group.sort((a, b) => a.watchedAt.getTime() - b.watchedAt.getTime());
+    group.forEach((l, i) => watchNumber.set(l.id, { n: i + 1, total: group.length }));
+  }
 
   const completionNumber = new Map<string, CompletionNumber>();
   const totals = new Map<string, number>();
@@ -392,6 +439,7 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <ListSearch />
           <div className="flex shrink-0 flex-wrap items-center gap-4">
+            <ViewToggle value={view} />
             <UrlSelect
               label="Type"
               param="type"
@@ -440,6 +488,21 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
             Search for something to add.
           </Link>
         </p>
+      ) : grid ? (
+        <ul className="grid grid-cols-2 gap-x-5 gap-y-7 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+          {visible.map((i, n) =>
+            i.kind === "entry" ? (
+              <li key={i.id}>
+                <GridCard
+                  entry={i.entry}
+                  completions={totals.get(i.entry.mediaId) ?? 0}
+                  ratingScale={user.ratingScale}
+                  eager={n < EAGER_GRID}
+                />
+              </li>
+            ) : null,
+          )}
+        </ul>
       ) : (
         <ul className="flex flex-col gap-3">
           {visible.map((i, n) => (
@@ -463,7 +526,7 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
                   eager={n < EAGER_POSTS}
                 />
               ) : (
-                <EpisodeCard log={i.log} eager={n < EAGER_POSTS} />
+                <EpisodeCard log={i.log} watch={watchNumber.get(i.id)} eager={n < EAGER_POSTS} />
               )}
             </li>
           ))}
@@ -481,6 +544,7 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
           </Link>
           <span className="text-xs text-muted">
             Showing {visible.length} of {items.length}
+            {grid ? " titles" : ""}
           </span>
         </div>
       )}

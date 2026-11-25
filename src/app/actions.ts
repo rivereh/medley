@@ -78,7 +78,8 @@ export async function getMediaDetails(ref: MediaRef) {
 
 /**
  * A show's episode list for the details modal, plus how far the user has got
- * (the progress of their most recently updated post for it).
+ * (the progress of their most recently updated post for it) and when each
+ * episode was last watched.
  */
 export async function getMediaEpisodes(ref: MediaRef) {
   if (ref.type !== "ANIME" && ref.type !== "TV") return null;
@@ -89,15 +90,23 @@ export async function getMediaEpisodes(ref: MediaRef) {
   const media = await db.media.findUniqueOrThrow({
     where: { source_externalId: { source: ref.source, externalId: ref.externalId } },
   });
-  const [episodes, latest] = await Promise.all([
+  const [episodes, latest, logs] = await Promise.all([
     getEpisodeList(media),
     db.entry.findFirst({
       where: { userId: user.id, mediaId: media.id },
       orderBy: { updatedAt: "desc" },
       select: { progress: true },
     }),
+    db.episodeLog.findMany({
+      where: { userId: user.id, mediaId: media.id },
+      select: { episode: true, watchedAt: true },
+      orderBy: { watchedAt: "asc" },
+    }),
   ]);
-  return { episodes, progress: latest?.progress ?? 0 };
+  // Episode number -> when it was last watched (including rewatches).
+  const lastWatched: Record<number, Date> = {};
+  for (const l of logs) lastWatched[l.episode] = l.watchedAt;
+  return { episodes, progress: latest?.progress ?? 0, lastWatched };
 }
 
 /**
@@ -302,7 +311,7 @@ export async function logNextEpisode(entryId: string) {
       data: {
         progress: episode,
         startedAt: entry.startedAt ?? today(),
-        ...(finished && { status: "COMPLETED", finishedAt: today() }),
+        ...(finished && { status: "COMPLETED", finishedAt: today(), statusAt: today() }),
       },
     }),
     db.activity.create({
@@ -316,6 +325,58 @@ export async function logNextEpisode(entryId: string) {
 
   revalidateAll();
   return { episode, title: info.title, finished };
+}
+
+/**
+ * One episode for the episode modal: its details from the saved episode list
+ * (fetched first if needed) and every time the user watched it, newest first.
+ */
+export async function getEpisodeDetails(mediaId: string, episode: number) {
+  const user = await getCurrentUser();
+  const media = await db.media.findUnique({ where: { id: mediaId } });
+  if (!media || (media.type !== "ANIME" && media.type !== "TV")) return null;
+
+  await ensureEpisodeList(media);
+  const [info, watches] = await Promise.all([
+    db.mediaEpisode.findUnique({ where: { mediaId_number: { mediaId, number: episode } } }),
+    db.episodeLog.findMany({
+      where: { userId: user.id, mediaId, episode },
+      select: { id: true, watchedAt: true },
+      orderBy: { watchedAt: "desc" },
+    }),
+  ]);
+  return { info, watches };
+}
+
+/**
+ * The Log button on an episode in the details modal: a post for that one
+ * episode, and nothing else. It's not tied to a list post, so it never adds
+ * the show, changes its status or moves its progress.
+ */
+export async function logEpisode(ref: MediaRef, episode: number) {
+  if (ref.type !== "ANIME" && ref.type !== "TV") return null;
+  if (!Number.isInteger(episode) || episode < 1) return null;
+  const user = await getCurrentUser();
+  const d = await getDetailsCached(ref.source, ref.type, ref.externalId);
+  const media = await db.media.findUniqueOrThrow({
+    where: { source_externalId: { source: d.source, externalId: d.externalId } },
+  });
+  if (media.totalUnits && episode > media.totalUnits) return null;
+
+  const info = await getEpisodeInfo(media, episode);
+  await db.episodeLog.create({
+    data: {
+      userId: user.id,
+      mediaId: media.id,
+      episode,
+      season: info.season,
+      seasonEpisode: info.seasonEpisode,
+      title: info.title,
+    },
+  });
+
+  revalidateAll();
+  return { episode, title: info.title };
 }
 
 /**
@@ -403,7 +464,10 @@ export async function removeChapterLogs(ids: string[]) {
   revalidateAll();
 }
 
-/** Removes an episode post. Undoing the latest episode also rolls progress back. */
+/**
+ * Removes an episode post. Undoing the latest +1 also rolls progress back
+ * (episodes logged on their own never counted toward progress).
+ */
 export async function removeEpisodeLog(id: string) {
   const user = await getCurrentUser();
   const log = await db.episodeLog.findFirst({
@@ -413,9 +477,9 @@ export async function removeEpisodeLog(id: string) {
   if (!log) return;
 
   await db.episodeLog.delete({ where: { id } });
-  if (log.entry.progress === log.episode) {
+  if (log.entry && log.entry.progress === log.episode) {
     await db.entry.update({
-      where: { id: log.entryId },
+      where: { id: log.entry.id },
       data: { progress: log.episode - 1 },
     });
   }

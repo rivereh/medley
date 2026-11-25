@@ -155,7 +155,7 @@ export function DetailsModal({
 
         {(result.type === "ANIME" || result.type === "TV") && (
           <div className="px-5 pb-6">
-            <EpisodeList result={result} />
+            <EpisodeList result={result} onLogged={() => setReloads((n) => n + 1)} />
           </div>
         )}
       </div>

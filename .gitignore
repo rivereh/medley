@@ -54,3 +54,6 @@ next-env.d.ts
 skills-lock.json
 # portable build (npm run package)
 /dist
+
+# personal release notes
+/RELEASING.md

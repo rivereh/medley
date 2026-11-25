@@ -128,7 +128,9 @@ model Entry {
 model EpisodeLog {
   id            String   @id @default(cuid())
   userId        String
-  entryId       String
+  // The post it counts toward (+1 button). Null for an episode logged on its
+  // own from the details modal, which doesn't touch any list post.
+  entryId       String?
   mediaId       String
   episode       Int // overall episode number (matches Entry.progress)
   season        Int? // TV only: season / episode within the season
@@ -138,8 +140,8 @@ model EpisodeLog {
   createdAt     DateTime @default(now()) // when the post was added
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  entry Entry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  entry Entry? @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  media Media  @relation(fields: [mediaId], references: [id], onDelete: Cascade)
 
   @@index([userId, watchedAt])
 }
@@ -172,6 +174,7 @@ model MediaEpisode {
   season        Int? // TV only: season / episode within the season
   seasonEpisode Int?
   title         String?
+  overview      String? // short description of the episode
   thumbnailUrl  String?
   airDate       DateTime? // calendar day, UTC midnight
   runtime       Int? // minutes

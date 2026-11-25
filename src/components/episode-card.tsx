@@ -6,13 +6,29 @@ import type { EpisodeLog, Media } from "@/generated/prisma/client";
 import { toLocalDayInput } from "@/lib/dates";
 import { TimestampText } from "./date-text";
 import { DetailsModal } from "./details-modal";
+import { EpisodeModal } from "./episode-modal";
 import { Poster } from "./poster";
 
 type EpisodeWithMedia = EpisodeLog & { media: Media };
 
-/** A post for one watched episode, logged with the +1 button. */
-export function EpisodeCard({ log, eager = false }: { log: EpisodeWithMedia; eager?: boolean }) {
+/** Which watch of this episode a post is, e.g. 2 of 3. */
+export type WatchNumber = { n: number; total: number };
+
+/**
+ * A post for one watched episode, logged with the +1 button or on its own.
+ * Clicking it opens the episode; clicking the show's title opens the show.
+ */
+export function EpisodeCard({
+  log,
+  watch,
+  eager = false,
+}: {
+  log: EpisodeWithMedia;
+  watch?: WatchNumber;
+  eager?: boolean;
+}) {
   const [showDetails, setShowDetails] = useState(false);
+  const [showEpisode, setShowEpisode] = useState(false);
   const [editing, setEditing] = useState(false);
   const [removing, startRemove] = useTransition();
   const { media } = log;
@@ -44,8 +60,8 @@ export function EpisodeCard({ log, eager = false }: { log: EpisodeWithMedia; eag
       {/* Same layout as entry posts: poster fills the card's height. */}
       <button
         type="button"
-        onClick={() => setShowDetails(true)}
-        aria-label={`Show details for ${media.title}`}
+        onClick={() => setShowEpisode(true)}
+        aria-label={`Show details for ${label} of ${media.title}`}
         className="w-20 shrink-0 rounded transition hover:brightness-110 hover:ring-2 hover:ring-accent"
       >
         <Poster src={media.posterUrl} alt={media.title} fill sizes="80px" eager={eager} />
@@ -69,11 +85,28 @@ export function EpisodeCard({ log, eager = false }: { log: EpisodeWithMedia; eag
         ) : (
           <>
             <div className="flex flex-col gap-1 text-sm">
-              <p className="text-muted">
-                Watched <span className="font-medium text-foreground">{label}</span>
-                {media.totalUnits && ` of ${media.totalUnits}`}
-              </p>
-              {log.title && <p className="font-medium leading-tight">“{log.title}”</p>}
+              <button
+                type="button"
+                onClick={() => setShowEpisode(true)}
+                className="group flex flex-col gap-1 text-left"
+              >
+                <span className="text-muted">
+                  Watched{" "}
+                  <span className="font-medium text-foreground group-hover:text-accent group-hover:underline">
+                    {label}
+                  </span>
+                  {media.totalUnits && ` of ${media.totalUnits}`}
+                  {watch && watch.total > 1 && (
+                    <span
+                      title={`Watch ${watch.n} of ${watch.total} of this episode`}
+                      className="ml-2 rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent"
+                    >
+                      #{watch.n}
+                    </span>
+                  )}
+                </span>
+                {log.title && <span className="font-medium leading-tight">“{log.title}”</span>}
+              </button>
               <p className="font-medium text-accent">
                 <TimestampText date={log.watchedAt} />
               </p>
@@ -93,6 +126,18 @@ export function EpisodeCard({ log, eager = false }: { log: EpisodeWithMedia; eag
           </>
         )}
       </div>
+
+      {showEpisode && (
+        <EpisodeModal
+          mediaId={log.mediaId}
+          showTitle={media.title}
+          episode={log.episode}
+          fallback={{ title: log.title, season: log.season, seasonEpisode: log.seasonEpisode }}
+          backdropUrl={media.backdropUrl}
+          onShowDetails={() => setShowDetails(true)}
+          onClose={() => setShowEpisode(false)}
+        />
+      )}
 
       {showDetails && (
         <DetailsModal

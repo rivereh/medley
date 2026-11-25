@@ -236,15 +236,19 @@ export async function importBackup(
     }
 
     for (const l of episodes) {
-      const entryId = entryIds.get(str(l.entry) ?? "");
+      // Episodes logged on their own (from the details modal) have no entry.
+      const standalone = str(l.entry) === null;
+      const entryId = standalone ? null : entryIds.get(str(l.entry)!);
       const mediaId = mediaIds.get(str(l.media) ?? "");
       const episode = int(l.episode);
       const watchedAt = date(l.watchedAt);
-      if (!entryId || !mediaId || episode === null || !watchedAt) continue;
+      if ((!standalone && !entryId) || !mediaId || episode === null || !watchedAt) continue;
 
       const existing = replace
         ? null
-        : await tx.episodeLog.findFirst({ where: { userId, entryId, episode, watchedAt } });
+        : await tx.episodeLog.findFirst({
+            where: { userId, entryId: entryId ?? null, mediaId, episode, watchedAt },
+          });
       if (existing) {
         result.episodesSkipped++;
         continue;

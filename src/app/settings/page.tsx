@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { DataTransfer } from "@/components/data-transfer";
 import { RatingScaleSetting } from "@/components/rating-scale-setting";
+import { TimeZoneCheck } from "@/components/time-zone-check";
 import { UpdateStatus } from "@/components/update-notice";
 import { getCurrentUser } from "@/lib/user";
 
@@ -32,6 +33,11 @@ async function Settings() {
       <section className="flex flex-col gap-3 rounded-lg bg-surface p-4">
         <h2 className="font-semibold">Your data</h2>
         <DataTransfer />
+      </section>
+
+      <section className="flex flex-col gap-3 rounded-lg bg-surface p-4">
+        <h2 className="font-semibold">Time zone</h2>
+        <TimeZoneCheck serverZone={Intl.DateTimeFormat().resolvedOptions().timeZone} />
       </section>
 
       <section id="updates" className="flex flex-col gap-3 rounded-lg bg-surface p-4">

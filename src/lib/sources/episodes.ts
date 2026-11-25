@@ -143,6 +143,7 @@ type KitsuEpisode = {
     thumbnail?: { original?: string; medium?: string; small?: string } | null;
     airdate?: string | null;
     length?: number | null;
+    synopsis?: string | null;
   };
 };
 
@@ -158,7 +159,7 @@ async function getKitsuEpisodes(kitsuId: string): Promise<KitsuEpisode[] | null>
   const page = (offset: number) =>
     getJson<{ data?: KitsuEpisode[]; meta?: { count?: number } }>(
       `${KITSU}/anime/${kitsuId}/episodes?sort=number&page[limit]=${KITSU_PAGE}&page[offset]=${offset}` +
-        `&fields[episodes]=number,canonicalTitle,titles,thumbnail,airdate,length`,
+        `&fields[episodes]=number,canonicalTitle,titles,thumbnail,airdate,length,synopsis`,
       { headers: KITSU_HEADERS },
       8000,
     );
@@ -194,6 +195,7 @@ async function fetchAnimeList(anilistId: string): Promise<EpisodeRow[] | null> {
         season: null,
         seasonEpisode: null,
         title: null,
+        overview: null,
         thumbnailUrl: null,
         airDate: null,
         runtime: null,
@@ -216,6 +218,7 @@ async function fetchAnimeList(anilistId: string): Promise<EpisodeRow[] | null> {
       r.thumbnailUrl = a.thumbnail?.small ?? a.thumbnail?.medium ?? a.thumbnail?.original ?? null;
       r.airDate = parseDay(a.airdate);
       r.runtime = a.length ?? null;
+      r.overview = a.synopsis?.trim() || null;
     }
   }
 
@@ -252,6 +255,7 @@ type TmdbSeason = {
     still_path: string | null;
     air_date: string | null;
     runtime: number | null;
+    overview: string | null;
   }[];
 };
 
@@ -289,6 +293,7 @@ async function fetchTvList(tmdbId: string): Promise<EpisodeRow[] | null> {
         season: n,
         seasonEpisode: e.episode_number,
         title: realName(e.name),
+        overview: e.overview?.trim() || null,
         thumbnailUrl: e.still_path ? `${STILL_BASE}${e.still_path}` : null,
         airDate: parseDay(e.air_date),
         runtime: e.runtime,

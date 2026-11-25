@@ -79,9 +79,9 @@ Medley is published as a Docker image, `ghcr.io/rivereh/medley`, for Intel/AMD a
 
 1. In CasaOS, open the **App Store**, click **Custom Install**, then **Import**.
 2. Paste in [`docker/casaos.yml`](docker/casaos.yml) and click **Submit**.
-3. Fill in your API keys under **Environment Variables** (see below), then **Install**.
+3. Fill in your API keys under **Environment Variables** (see below). Check that `TZ` is your time zone (e.g. `America/Los_Angeles`); CasaOS usually fills it in. Then click **Install**.
 
-Medley opens on port 3000. Your data lives in `/DATA/AppData/medley/data` on the server. Without CasaOS, run `docker compose -f docker/casaos.yml up -d`.
+Medley opens on port 3000. **Settings → Time zone** shows the zone Medley is using and warns if it doesn't match your browser; without the right one, things you log in the evening get the next day's date. Your data lives in `/DATA/AppData/medley/data` on the server. Without CasaOS, run `docker compose -f docker/casaos.yml up -d`.
 
 ## Updating
 
