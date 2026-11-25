@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "./db";
-import { isStatus, isType } from "./labels";
+import { isStatus, isType, parseTypes } from "./labels";
 
 // Export/import of everything on a user's list as one JSON file.
 //
@@ -38,7 +38,11 @@ export async function buildBackup(userId: string) {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
-    settings: { ratingScale: user.ratingScale },
+    settings: {
+      ratingScale: user.ratingScale,
+      hiddenListTypes: user.hiddenListTypes,
+      hiddenGridTypes: user.hiddenGridTypes,
+    },
     media: [...media.entries()].map(([key, m]) => ({
       key,
       source: m.source,
@@ -164,6 +168,23 @@ export async function importBackup(
         where: { id: userId },
         data: { ratingScale: scale as (typeof SCALES)[number] },
       });
+    }
+    // Which types My list hides (older exports don't have these).
+    if (isObj(data.settings)) {
+      const { hiddenListTypes, hiddenGridTypes } = data.settings;
+      if (typeof hiddenListTypes === "string" || typeof hiddenGridTypes === "string") {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            ...(typeof hiddenListTypes === "string" && {
+              hiddenListTypes: parseTypes(hiddenListTypes).join(","),
+            }),
+            ...(typeof hiddenGridTypes === "string" && {
+              hiddenGridTypes: parseTypes(hiddenGridTypes).join(","),
+            }),
+          },
+        });
+      }
     }
 
     // Titles: upsert by source + external id; remember each key's database id.

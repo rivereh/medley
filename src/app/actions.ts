@@ -5,7 +5,7 @@ import { after } from "next/server";
 import type { MediaSource, MediaType, RatingScale } from "@/generated/prisma/enums";
 import { parseDay, postDate, toDay, today } from "@/lib/dates";
 import { db } from "@/lib/db";
-import { isStatus, progressTotal, type Status } from "@/lib/labels";
+import { isStatus, isType, progressTotal, type Status } from "@/lib/labels";
 import { getDetailsCached } from "@/lib/sources/cache";
 import { ensureEpisodeList, getEpisodeInfo, getEpisodeList } from "@/lib/sources/episodes";
 import { getCurrentUser } from "@/lib/user";
@@ -265,6 +265,19 @@ export async function removeExtraPost(id: string, kind: "planned" | "started") {
     data: kind === "planned" ? { plannedAt: null } : { startedAt: null },
   });
   revalidateAll();
+}
+
+/** Which media types My list hides, for the list or the grid view. */
+export async function updateHiddenTypes(view: "list" | "grid", hidden: string[]) {
+  if (view !== "list" && view !== "grid") return;
+  const user = await getCurrentUser();
+  const value = [...new Set(hidden.filter(isType))].join(",");
+  await db.user.update({
+    where: { id: user.id },
+    data: view === "list" ? { hiddenListTypes: value } : { hiddenGridTypes: value },
+  });
+  revalidatePath("/list");
+  revalidatePath("/settings");
 }
 
 export async function updateRatingScale(scale: RatingScale) {

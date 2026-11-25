@@ -12,7 +12,15 @@ import { type ListView, VIEW_COOKIE, ViewToggle } from "@/components/view-toggle
 import type { ChapterLog, Entry, EpisodeLog, Media } from "@/generated/prisma/client";
 import { postDate, toDay } from "@/lib/dates";
 import { db } from "@/lib/db";
-import { hasProgress, isStatus, isType, STATUS_LABELS, tracksStart, TYPE_LABELS } from "@/lib/labels";
+import {
+  hasProgress,
+  isStatus,
+  isType,
+  parseTypes,
+  STATUS_LABELS,
+  tracksStart,
+  TYPE_LABELS,
+} from "@/lib/labels";
 import { getCurrentUser } from "@/lib/user";
 
 // My list mixes several kinds of posts: entries (planning / completed / …),
@@ -295,8 +303,12 @@ async function Entries({ searchParams }: { searchParams: PageProps<"/list">["sea
   const titleFilter = query
     ? { OR: [{ title: { contains: query } }, { creator: { contains: query } }] }
     : {};
+  // Types hidden for this view in Settings. Picking a type in the Type filter
+  // still shows it. (The In progress row isn't affected.)
+  const hidden = parseTypes(grid ? user.hiddenGridTypes : user.hiddenListTypes);
+  const typeFilter = type ? { type } : hidden.length ? { type: { notIn: hidden } } : {};
   const mediaFilter =
-    type || query ? { media: { ...(type && { type }), ...titleFilter } } : {};
+    type || query || hidden.length ? { media: { ...typeFilter, ...titleFilter } } : {};
   const showsInProgress = !type || hasProgress(type);
 
   // Everything is loaded once; the tabs and counts are worked out from it.

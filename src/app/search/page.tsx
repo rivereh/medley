@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { ResultCard } from "@/components/result-card";
 import { db } from "@/lib/db";
 import { CATEGORIES, type Category } from "@/lib/sources";
+import { searchCached } from "@/lib/sources/search-cache";
 import { getCurrentUser } from "@/lib/user";
 
 const CATEGORY_KEYS = Object.keys(CATEGORIES) as Category[];
@@ -102,13 +103,13 @@ async function ResultsSection({
   // Search results are always per-request: never let Next prerender these
   // API calls (it would cut them off when the prerender finishes).
   await connection();
-  const { search, isConfigured, setupHint } = CATEGORIES[category];
+  const { isConfigured, setupHint } = CATEGORIES[category];
   const { emptyHint } = CATEGORIES[category] as { emptyHint?: string };
   if (!isConfigured()) return <p className="text-sm text-muted">{setupHint} to enable this.</p>;
 
   let results;
   try {
-    results = (await search(query)).slice(0, limit);
+    results = (await searchCached(category, query)).slice(0, limit);
   } catch (err) {
     console.error(err);
     return <p className="text-sm text-red-400">Search failed. Check the server logs.</p>;

@@ -1,8 +1,10 @@
 import { Suspense } from "react";
 import { DataTransfer } from "@/components/data-transfer";
+import { FeedTypesSetting } from "@/components/feed-types-setting";
 import { RatingScaleSetting } from "@/components/rating-scale-setting";
 import { TimeZoneCheck } from "@/components/time-zone-check";
 import { UpdateStatus } from "@/components/update-notice";
+import { parseTypes } from "@/lib/labels";
 import { getCurrentUser } from "@/lib/user";
 
 export default function SettingsPage() {
@@ -28,6 +30,20 @@ async function Settings() {
           </p>
         </div>
         <RatingScaleSetting current={user.ratingScale} />
+      </section>
+
+      <section className="flex flex-col gap-3 rounded-lg bg-surface p-4">
+        <div>
+          <h2 className="font-semibold">What My list shows</h2>
+          <p className="text-sm text-muted">
+            Hide types you don’t want in the list or the grid. Picking a type in My list’s Type
+            filter still shows it.
+          </p>
+        </div>
+        <FeedTypesSetting
+          hiddenList={parseTypes(user.hiddenListTypes)}
+          hiddenGrid={parseTypes(user.hiddenGridTypes)}
+        />
       </section>
 
       <section className="flex flex-col gap-3 rounded-lg bg-surface p-4">

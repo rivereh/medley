@@ -35,6 +35,11 @@ export function progressTotal(m: { type: Type; totalUnits: number | null; chapte
   return m.type === "BOOK" ? m.chapters : m.totalUnits;
 }
 
+/** A stored list of types ("ANIME,VIDEO") back into types, ignoring unknown ones. */
+export function parseTypes(value: string | null | undefined): Type[] {
+  return (value ?? "").split(",").filter(isType);
+}
+
 export function isStatus(v: unknown): v is Status {
   return typeof v === "string" && v in STATUS_LABELS;
 }

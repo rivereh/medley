@@ -47,6 +47,10 @@ model User {
   username    String      @unique
   avatarUrl   String?
   ratingScale RatingScale @default(FIVE_STARS)
+  // Media types hidden from My list, per view: comma-separated MediaType
+  // values. Stored as hidden (not shown) so types added later start visible.
+  hiddenListTypes String @default("")
+  hiddenGridTypes String @default("")
   createdAt   DateTime    @default(now())
 
   entries   Entry[]

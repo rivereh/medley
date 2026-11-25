@@ -26,7 +26,7 @@ export function UpdateNotice() {
   return (
     <Link
       href="/settings#updates"
-      className="ml-auto self-center rounded-full bg-accent/15 px-3 py-1 text-xs font-medium text-accent hover:bg-accent/25"
+      className="hidden rounded-full bg-accent/15 sm:inline-block px-3 py-1 text-xs font-medium text-accent hover:bg-accent/25"
     >
       Update available: {info.latest}
     </Link>
